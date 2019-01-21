@@ -7,28 +7,55 @@ from libs.Game.Mainloop import Mainloop
 
 
 
+class SnakeStyle():
+    def __init__(self, color, headColor):
+        self.color = color
+        self.headColor = headColor
+
+class SnakeStyleX():
+    def __init__(self, playerSnakeStyle, remoteSnakeStyle):
+        self.playerSnakeStyle = playerSnakeStyle
+        self.remoteSnakeStyle = remoteSnakeStyle
+
 class Player():
-    def __init__(self, game, pos, id, color):
+    def __init__(self, game, id, blocks, style):
         self.game = game
         self.id = id
 
-        self.pos = pos.copy()
-        self.color = color
+        self.blocks = blocks.copy()
+        self.style = style
 
     def update(self):
         pass
 
     def draw(self):
-        x = self.pos[0]*self.game.map.scale[0]
-        y = self.pos[1]*self.game.map.scale[1]
-        xSize = self.game.map.scale[0]
-        ySize = self.game.map.scale[1]
+        scaleX = self.game.map.scale[0]
+        scaleY = self.game.map.scale[1]
 
-        self.game.canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=self.color, outline=self.color)
-        self.game.canvas.create_text(x+xSize/2, y+ySize/2, text=self.id, fill='#000000')
+        for block in self.blocks:
+            x = block['x']*scaleX
+            y = block['y']*scaleY
+            xSize = scaleX
+            ySize = scaleY
+
+            if block['isHead']:
+                color = self.style.headColor
+
+                self.game.canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+                self.game.canvas.create_text(x+xSize/2, y+ySize/2, text=self.id, fill='#FFFFFF')
+            else:
+                color = self.style.color
+
+                self.game.canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
 
     def fromDict(game, playerDict):
-        return Player(game, [playerDict['x'], playerDict['y']], playerDict['id'], playerDict['color'])
+        styleX = snakeStyles[playerDict['snake']['style']]
+        if playerDict['isPlayer']:
+            style = styleX.playerSnakeStyle
+        else:
+            style = styleX.remoteSnakeStyle
+
+        return Player(game, playerDict['id'], playerDict['snake']['blocks'], style)
 
 class GameMap():
     def __init__(self, size, scale):
@@ -121,13 +148,26 @@ class Game():
 
 
 
-def test():
+snakeStyles = {
+    'style1': SnakeStyleX(SnakeStyle('#FF0000', '#000000'), SnakeStyle('#990000', '#222222'))
+}
+
+
+
+def main():
+    import sys
+
     gameClient = GameClient('192.168.1.4', 4041, True)
     gameClient.begin()
 
-    game = Game(gameClient)
+    try:
+        game = Game(gameClient)
+    except Exception as e:
+        gameClient.end()
+
+        raise e
 
 
 
 if __name__ == '__main__':
-    test()
+    main()

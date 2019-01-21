@@ -49,7 +49,7 @@ class LinkedList<T> {
 
     }
 
-    void add(T value) {
+    void addToEnd(T value) {
         if (this.beginNode == null) {
             this.beginNode = Node<T>(value);
             this.endNode = this.beginNode;
@@ -58,6 +58,10 @@ class LinkedList<T> {
             this.endNode.next.previous = this.endNode;
             this.endNode = this.endNode.next;
         }
+    }
+
+    void add(T value) {
+        this.addToEnd(value);
     }
 
     void addToBegin(T value) {
@@ -69,6 +73,14 @@ class LinkedList<T> {
             this.beginNode.previous.next = this.beginNode;
             this.beginNode = this.beginNode.previous;
         }
+    }
+
+    T popFromBegin() {
+        return this.pop(0);
+    }
+
+    T popFromEnd() {
+        return this.pop(this.getLength()-1);
     }
 
     T get(int getIndex) {
@@ -342,36 +354,115 @@ class Mainloop {
 }
 
 class Player extends SocketStreamableItem {
-    int x;
-    int y;
-    int velX;
-    int velY;
+    Snake snake;
 
-    String color;
-    String xColor;
-
-    bool velChangable;
-
-    Player(this.x, this.y, this.velX, this.velY, this.color, this.xColor, int id):super(id) {
-        this.velChangable = true;
+    Player(int id, int x, int y):super(id) {
+        this.snake = Snake(x, y);
     }
 
     Map<String, dynamic> toMap(int playerId) {
         Map<String, dynamic> data = {
             'id': this.id,
-            'x': this.x,
-            'y': this.y,
-            'color': (playerId == this.id) ? this.color : this.xColor,
+            'snake': this.snake.toMap(),
+            'isPlayer': (playerId == this.id),
         };
 
         return data;
     }
 
     void update() {
-        this.x += this.velX;
-        this.y += this.velY;
+        this.snake.update();
+    }
+}
 
-        this.velChangable = true;
+class SnakeBlock {
+    int x;
+    int y;
+    bool isHead;
+
+    SnakeBlock(this.x, this.y, this.isHead);
+
+    Map<String, dynamic> toMap() {
+        Map<String, dynamic> data = {
+            'x': this.x,
+            'y': this.y,
+            'isHead': this.isHead,
+        };
+
+        return data;
+    }
+}
+
+enum SnakeStyle {
+    style1
+}
+
+class Snake {
+    LinkedList<SnakeBlock> blocks;
+    int length;
+
+    int velX;
+    int velY;
+    bool velChanged;
+
+    SnakeStyle style;
+
+    Snake(int x, int y) {
+        this.blocks = LinkedList<SnakeBlock>();
+        this.blocks.addToBegin(SnakeBlock(x, y, true));
+        this.length = 5;
+
+        this.velX = 1;
+        this.velY = 0;
+        this.velChanged = false;
+
+        this.style = SnakeStyle.style1;
+    }
+
+    void update() {
+        SnakeBlock pos = this.blocks.get(0);
+        int newX = pos.x+this.velX;
+        int newY = pos.y+this.velY;
+        pos.isHead = false;
+        SnakeBlock newPos = SnakeBlock(newX, newY, true);
+
+        this.blocks.addToBegin(newPos);
+
+        if (this.blocks.getLength() > this.length) {
+            this.blocks.popFromEnd();
+        }
+
+        this.velChanged = false;
+    }
+
+    void changeVel(int newVelX, int newVelY) {
+        if (!this.velChanged) {
+            if (((newVelX+newVelY).abs() == 1) && !(newVelX == -this.velX && newVelY == -this.velY)) {
+                this.velX = newVelX;
+                this.velY = newVelY;
+                this.velChanged = true;
+            }
+        }
+    }
+
+    Map<String, dynamic> toMap() {
+        List<Map<String, dynamic>> Function(Node<SnakeBlock>, List<Map<String, dynamic>>) nodeFunc = (Node<SnakeBlock> node, List<Map<String, dynamic>> tempList) {
+            tempList.add(node.value.toMap());
+            return tempList;
+        };
+        Node<SnakeBlock> Function(Node<SnakeBlock>) nodeGetNext = (Node<SnakeBlock> node) {
+            return node.next;
+        };
+
+        Proceeder<Node<SnakeBlock>, List<Map<String, dynamic>>> proceeder = Proceeder(this.blocks.beginNode);
+        List<Map<String, dynamic>> blocksMap = proceeder.proceed(nodeFunc, nodeGetNext, List<Map<String, dynamic>>()).toList();
+
+        Map<String, dynamic> data = {
+            'blocks': blocksMap,
+            'style': this.style.toString().split('.').last,
+        };
+
+        return data;
     }
 }
 
@@ -444,7 +535,7 @@ class Game {
                 int x = Random().nextInt(this.gameMap.xSize);
                 int y = Random().nextInt(this.gameMap.xSize);
 
-                Player player = Player(x, y, 0, 1, '#FF0000', '#00FF00', playerId);
+                Player player = Player(playerId, x, y);
                 this.players.add(player);
 
                 Map<String, dynamic> responseMessage = {
@@ -470,12 +561,7 @@ class Game {
 
                 Player player = this.players.get(playerId);
 
-                if (player.velChangable) {
-                    player.velX = newVelX;
-                    player.velY = newVelY;
-
-                    player.velChangable = false;
-                }
+                player.snake.changeVel(newVelX, newVelY);
 
                 Map<String, dynamic> responseMessage = {
                 };
@@ -509,7 +595,7 @@ void test() {
     linkedList.add(3);
     linkedList.add(5);
 
-    // print(linkedList.pop(3));
+    // print(linkedList.pop(0));
     // print(linkedList.pop(0));
     // print(linkedList.pop(0));
     // print(linkedList.pop(0));
@@ -537,11 +623,4 @@ Future main() async {
     );
 
     Game(server, GameMap(25, 25, 20, 20));
-
-    // int nextId = 0;
-    //
-    // server.listen((Socket client) {
-    //     GameClient(client, nextId, outputEnabled: true);
-    //     nextId++;
-    // });
 }
