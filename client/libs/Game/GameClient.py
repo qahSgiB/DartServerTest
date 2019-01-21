@@ -43,9 +43,9 @@ class GameClient():
         return message
 
     def end(self):
-        self.output('Disconnected')
+        endCommunicationMessage = self.communicate('endCommunication', {})
 
-        endCommunicationMessag = self.communicate('endCommunication', {})
+        self.output('Disconnected')
 
         self.socket.close()
 

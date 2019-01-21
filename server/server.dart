@@ -12,10 +12,6 @@ import 'package:tuple/tuple.dart';
 
 
 
-typedef onMessageType = Map<Object, Object> Function(String, Map<Object, Object>);
-
-
-
 class Node<T> {
     T value;
     Node next;
@@ -207,20 +203,20 @@ class SocketStreamableItem {
 
     SocketStreamableItem(this.id);
 
-    Map<Object, Object> toMap() {
+    Map<String, dynamic> toMap(int playerId) {
         return {};
     }
 }
 
-class SocketStreamableItemsList {
-    LinkedList<SocketStreamableItem> list;
+class SocketStreamableItemsList<T extends SocketStreamableItem> {
+    LinkedList<T> list;
 
     SocketStreamableItemsList() {
-        list = LinkedList<SocketStreamableItem>();
+        list = LinkedList<T>();
     }
 
     List<int> getIndex(int id) {
-        return this.list.findIndex((Node<SocketStreamableItem> item) {return item.value.id == id;});
+        return this.list.findIndex((Node<T> item) {return item.value.id == id;});
     }
 
     void remove(int id) {
@@ -231,46 +227,29 @@ class SocketStreamableItemsList {
         }
     }
 
-    SocketStreamableItem get(int id) {
+    T get(int id) {
         int index = this.getIndex(id)[0];
 
         return this.list.get(index);
     }
 
-    void add(SocketStreamableItem socketStreamableItem) {
+    void add(T socketStreamableItem) {
         this.list.add(socketStreamableItem);
     }
 
-    List<Map<Object, Object>> toList() {
-        List<Map<Object, Object>> Function(Node<SocketStreamableItem>, List<Map<Object, Object>>) nodeFunc = (Node<SocketStreamableItem> node, List<Map<Object, Object>> tempList) {
-            tempList.add(node.value.toMap());
+    List<Map<String, dynamic>> toList(int playerId) {
+        List<Map<String, dynamic>> Function(Node<T>, List<Map<String, dynamic>>) nodeFunc = (Node<T> node, List<Map<String, dynamic>> tempList) {
+            tempList.add(node.value.toMap(playerId));
             return tempList;
         };
-        Node<SocketStreamableItem> Function(Node<SocketStreamableItem>) nodeGetNext = (Node<SocketStreamableItem> node) {
+        Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
             return node.next;
         };
 
-        Proceeder<Node<SocketStreamableItem>, List<Map<Object, Object>>> proceeder = Proceeder(this.list.beginNode);
-        List<Map<Object, Object>> list = proceeder.proceed(nodeFunc, nodeGetNext, List<Map<Object, Object>>());
+        Proceeder<Node<T>, List<Map<String, dynamic>>> proceeder = Proceeder(this.list.beginNode);
+        List<Map<String, dynamic>> list = proceeder.proceed(nodeFunc, nodeGetNext, List<Map<String, dynamic>>());
 
         return list;
-    }
-}
-
-class Player extends SocketStreamableItem {
-    int x;
-    int y;
-
-    Player(this.x, this.y, int id):super(id);
-
-    Map<Object, Object> toMap() {
-        Map<Object, Object> data = {
-            'id': this.id,
-            'x': this.x,
-            'y': this.y,
-        };
-
-        return data;
     }
 }
 
@@ -280,9 +259,9 @@ class GameClient {
     int port;
     int id;
     bool outputEnabled;
-    onMessageType onMessage;
+    Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage;
 
-    GameClient(Socket client, int id, onMessageType onMessage, {bool outputEnabled=false}) {
+    GameClient(Socket client, int id, Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage, {bool outputEnabled=false}) {
         this.client = client;
         this.address = this.client.remoteAddress.address;
         this.port = this.client.remotePort;
@@ -304,7 +283,7 @@ class GameClient {
     }
 
     void listen(List<int> data) {
-        Map<Object, Object> message = json.decode(String.fromCharCodes(data).trim());
+        Map<String, dynamic> message = json.decode(String.fromCharCodes(data).trim());
 
         String title = message['title'];
 
@@ -317,26 +296,26 @@ class GameClient {
         }
     }
 
-    void sendData(Map<Object, Object> message) {
+    void sendData(Map<String, dynamic> message) {
         String data = json.encode(message);
 
         this.client.write(data);
     }
 
-    void begin(Map<Object, Object> message) {
-        this.output('Begin | id:${this.id}');
+    void begin(Map<String, dynamic> message) {
+        this.output('Begin');
 
-        Map<Object, Object> responseMessage = {
+        Map<String, dynamic> responseMessage = {
             'id': this.id,
         };
 
         this.sendData(responseMessage);
     }
 
-    void end(Map<Object, Object> message) {
+    void end(Map<String, dynamic> message) {
         this.output('End');
 
-        Map<Object, Object> responseMessage = {
+        Map<String, dynamic> responseMessage = {
         };
 
         this.sendData(responseMessage);
@@ -345,63 +324,167 @@ class GameClient {
     }
 }
 
+class Mainloop {
+    Duration delay;
+    List<void Function()> Function() getUpdateFuncs;
+
+    Mainloop(this.delay, this.getUpdateFuncs);
+
+    void start() {
+        Timer.periodic(this.delay, this.loop);
+    }
+
+    void loop(Timer timer) {
+        for (void Function() updateFunc in this.getUpdateFuncs()) {
+            updateFunc();
+        }
+    }
+}
+
+class Player extends SocketStreamableItem {
+    int x;
+    int y;
+    int velX;
+    int velY;
+
+    String color;
+    String xColor;
+
+    bool velChangable;
+
+    Player(this.x, this.y, this.velX, this.velY, this.color, this.xColor, int id):super(id) {
+        this.velChangable = true;
+    }
+
+    Map<String, dynamic> toMap(int playerId) {
+        Map<String, dynamic> data = {
+            'id': this.id,
+            'x': this.x,
+            'y': this.y,
+            'color': (playerId == this.id) ? this.color : this.xColor,
+        };
+
+        return data;
+    }
+
+    void update() {
+        this.x += this.velX;
+        this.y += this.velY;
+
+        this.velChangable = true;
+    }
+}
+
+class GameMap {
+    int xSize;
+    int ySize;
+    int xScale;
+    int yScale;
+
+    GameMap(this.xSize, this.ySize, this.xScale, this.yScale);
+
+    int getScreenXSize() {
+        return this.xSize*this.xScale;
+    }
+
+    int getScreenYSize() {
+        return this.ySize*this.yScale;
+    }
+
+    Map<String, dynamic> toMap() {
+        Map<String, dynamic> data = {
+            'xSize': this.xSize,
+            'ySize': this.ySize,
+            'xScale': this.xScale,
+            'yScale': this.yScale,
+        };
+
+        return data;
+    }
+}
+
 class Game {
     ServerSocket server;
-    SocketStreamableItemsList players;
+    SocketStreamableItemsList<Player> players;
     int nextPlayerId;
-    int width;
-    int height;
+    GameMap gameMap;
+    Mainloop playersUpdateMainloop;
 
-    Game(this.server, this.width, this.height) {
-        this.players = SocketStreamableItemsList();
+    Game(this.server, this.gameMap) {
+        this.players = SocketStreamableItemsList<Player>();
         this.nextPlayerId = 0;
 
+
+        this.playersUpdateMainloop = Mainloop(Duration(milliseconds: 200), this.getPlayersUpdateFunc);
+        this.playersUpdateMainloop.start();
+
         this.server.listen(this.newClient);
+    }
+
+    List<void Function()> getPlayersUpdateFunc() {
+        List<void Function()> Function(Node<Player>, List<void Function()>) nodeFunc = (Node<Player> node, List<void Function()> tempPlayersUpadateFuncs) {
+            tempPlayersUpadateFuncs.add(node.value.update);
+            return tempPlayersUpadateFuncs;
+        };
+        Node<Player> Function(Node<Player>) nodeGetNext = (Node<Player> node) {
+            return node.next;
+        };
+
+        Proceeder<Node<Player>, List<void Function()>> proceeder = Proceeder(this.players.list.beginNode);
+        List<void Function()> playersUpadateFuncs = proceeder.proceed(nodeFunc, nodeGetNext, List<void Function()>());
+
+        return playersUpadateFuncs;
     }
 
     void newClient(Socket client) {
         int playerId = this.nextPlayerId;
 
-        Map<Object, Object> gameClientOnMessage(String title, Map<Object, Object> message) {
+        Map<String, dynamic> gameClientOnMessage(String title, Map<String, dynamic> message) {
             if (title == 'addPlayer') {
-                Player player = Player(Random().nextInt(this.width), Random().nextInt(this.height), playerId);
+                int x = Random().nextInt(this.gameMap.xSize);
+                int y = Random().nextInt(this.gameMap.xSize);
+
+                Player player = Player(x, y, 0, 1, '#FF0000', '#00FF00', playerId);
                 this.players.add(player);
 
-                Map<Object, Object> responseMessage = {
-                    'player': player.toMap()
+                Map<String, dynamic> responseMessage = {
+                    'player': player.toMap(playerId)
                 };
 
                 return responseMessage;
             } else if (title == 'loop') {
-                Map<Object, Object> responseMessage = {
-                    'players': this.players.toList(),
+                Map<String, dynamic> responseMessage = {
+                    'players': this.players.toList(playerId),
                 };
 
                 return responseMessage;
             } else if (title == 'initInfo') {
-                Map<Object, Object> responseMessage = {
-                    'width': this.width,
-                    'height': this.height,
+                Map<String, dynamic> responseMessage = {
+                    'gameMap': this.gameMap.toMap(),
                 };
 
                 return responseMessage;
-            } else if (title == 'changeXY') {
-                int x = message['x'];
-                int y = message['y'];
+            } else if (title == 'changeVel') {
+                int newVelX = message['vel']['x'];
+                int newVelY = message['vel']['y'];
 
                 Player player = this.players.get(playerId);
 
-                player.x = x;
-                player.y = y;
+                if (player.velChangable) {
+                    player.velX = newVelX;
+                    player.velY = newVelY;
 
-                Map<Object, Object> responseMessage = {
+                    player.velChangable = false;
+                }
+
+                Map<String, dynamic> responseMessage = {
                 };
 
                 return responseMessage;
             } else if (title == 'end') {
                 this.players.remove(playerId);
 
-                Map<Object, Object> responseMessage = {
+                Map<String, dynamic> responseMessage = {
                 };
 
                 return responseMessage;
@@ -415,8 +498,6 @@ class Game {
         this.nextPlayerId++;
     }
 }
-
-
 
 void test() {
     LinkedList<int> linkedList = LinkedList<int>();
@@ -452,10 +533,10 @@ Future main() async {
 
     ServerSocket server = await ServerSocket.bind(
         '192.168.1.4',
-        4040,
+        4041,
     );
 
-    Game(server, 500, 500);
+    Game(server, GameMap(25, 25, 20, 20));
 
     // int nextId = 0;
     //
