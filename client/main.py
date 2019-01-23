@@ -6,121 +6,165 @@ from libs.Game.GameClient import GameClient
 from libs.Game.Mainloop import Mainloop
 
 
+class PlayerRemoteX():
+    def __init__(self, ifPlayer, ifRemote):
+        self.ifPlayer = ifPlayer
+        self.ifRemote = ifRemote
+
+    def get(self, isPlayer):
+        return self.ifPlayer if isPlayer else self.ifRemote
 
 class SnakeStyle():
-    def __init__(self, color, headColor):
-        self.color = color
-        self.headColor = headColor
+    def __init__(self, draw):
+        self.draw = draw
 
-class SnakeStyleX():
-    def __init__(self, playerSnakeStyle, remoteSnakeStyle):
-        self.playerSnakeStyle = playerSnakeStyle
-        self.remoteSnakeStyle = remoteSnakeStyle
+    def stylePlayer1Draw(snake):
+        canvas = snake.game.canvas
+        gameMap = snake.game.map
 
-class Player():
-    def __init__(self, game, id, blocks, style):
-        self.game = game
-        self.id = id
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
 
-        self.blocks = blocks.copy()
-        self.style = style
-
-    def update(self):
-        pass
-
-    def draw(self):
-        scaleX = self.game.map.scale[0]
-        scaleY = self.game.map.scale[1]
-
-        for block in self.blocks:
-            x = block['x']*scaleX
-            y = block['y']*scaleY
+        for block in snake.blocks:
+            x = block.pos[0]*scaleX
+            y = block.pos[1]*scaleY
             xSize = scaleX
             ySize = scaleY
 
-            if block['isHead']:
-                color = self.style.headColor
-
-                self.game.canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
-                self.game.canvas.create_text(x+xSize/2, y+ySize/2, text=self.id, fill='#FFFFFF')
+            if block.isHead:
+                color = '#FF0000'
             else:
-                color = self.style.color
+                color = '#000000'
 
-                self.game.canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+            canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
 
-    def fromDict(game, playerDict):
-        styleX = snakeStyles[playerDict['snake']['style']]
-        if playerDict['isPlayer']:
-            style = styleX.playerSnakeStyle
-        else:
-            style = styleX.remoteSnakeStyle
+    def styleRemote1Draw(snake):
+        canvas = snake.game.canvas
+        gameMap = snake.game.map
 
-        return Player(game, playerDict['id'], playerDict['snake']['blocks'], style)
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
+
+        for block in snake.blocks:
+            x = block.pos[0]*scaleX
+            y = block.pos[1]*scaleY
+            xSize = scaleX
+            ySize = scaleY
+
+            if block.isHead:
+                color = '#996666'
+            else:
+                color = '#666666'
+
+            canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+
+class Block():
+    def __init__(self, pos, isHead):
+        self.pos = pos.copy()
+        self.isHead = isHead
+
+    def fromDict(blockDict):
+        return Block([blockDict['x'], blockDict['y']], blockDict['isHead'])
+
+class Snake():
+    def __init__(self, game, blocks, style):
+        self.game = game
+        self.blocks = blocks
+        self.style = style
+
+    def draw(self):
+        self.style.draw(self)
+
+    def fromDict(snakeDict, game, isPlayer=False):
+        return Snake(game, [Block.fromDict(blockDict) for blockDict in snakeDict['blocks']], snakeStyles[snakeDict['style']].get(isPlayer))
+
+class Player():
+    def __init__(self, game, id, snake):
+        self.game = game
+        self.id = id
+
+        self.snake = snake
+
+    def draw(self):
+        self.snake.draw()
+
+    def fromDict(playerDict, game):
+        isPlayer = playerDict['isPlayer']
+
+        return Player(game, playerDict['id'], Snake.fromDict(playerDict['snake'], game, isPlayer))
 
 class GameMap():
     def __init__(self, size, scale):
         self.size = size.copy()
         self.scale = scale.copy()
 
-    def fromDict(gameDict):
+    def fromDict(gameDict, screenSize):
         size = [gameDict['xSize'], gameDict['ySize']]
-        scale = [gameDict['xScale'], gameDict['yScale']]
+        scale = list(map(lambda zip_: zip_[0]/zip_[1], zip(screenSize, size)))
 
         return GameMap(size, scale)
 
     def getScreenSize(self):
-        return list(map(lambda zip_: zip_[0]*zip_[1], zip(self.size, self.scale)))
+        return list(map(lambda zip_: int(zip_[0]*zip_[1]), zip(self.size, self.scale)))
 
 class Game():
-    def __init__(self, gameClient):
-        self.gameClient = gameClient
+    def __init__(self, screenSize, gameServerAddress, gameServerPort):
+        self.gameServerAddress = gameServerAddress
+        self.gameServerPort = gameServerPort
+        self.gameClient = None
 
-        initInfoMessage = self.gameClient.communicate('initInfo', {})
-        self.map = GameMap.fromDict(initInfoMessage['gameMap'])
-        screenSize = self.map.getScreenSize()
+        self.screenSize = screenSize.copy()
 
         self.root = tkinter.Tk()
-        self.root.geometry('{width}x{height}'.format(width=screenSize[0], height=screenSize[1]))
+        self.root.geometry('{width}x{height}'.format(width=self.screenSize[0], height=self.screenSize[1]))
         self.root.protocol('WM_DELETE_WINDOW', self.end)
+        self.root.title('Snako pythonish client')
 
-        self.canvas = tkinter.Canvas(self.root, width=screenSize[0], height=screenSize[1], bg='#FFFFFF', highlightthickness=0)
+        self.canvas = tkinter.Canvas(self.root, width=self.screenSize[0], height=self.screenSize[1], bg='#FFFFFF', highlightthickness=0)
         self.canvas.pack()
         self.canvas.bind_all('<Key>', self.keyPressed)
 
-        addPlayerMessage = self.gameClient.communicate('addPlayer', {})
-
-        self.playerId = addPlayerMessage['player']['id']
-
-        self.root.title('DartServerTest Client | id: {id}'.format(id=self.playerId))
-
-        self.mainloop = Mainloop(self.root.after, 50, self.getObjects)
-
+        self.mainloop = Mainloop(50, self.gameStateOnStart, self.gameStateOnLoop, self.gameStateOnEnd, self.root.after, self.root.after_cancel)
         self.mainloop.start()
+
         self.root.mainloop()
 
-    def getObjects(self):
+    def gameStateOnStart(self):
+        self.gameClient = GameClient(self.gameServerAddress, self.gameServerPort, True)
+        self.gameClient.begin()
+
+        initInfoMessage = self.gameClient.communicate('initInfo', {})
+        error = initInfoMessage['error']
+
+        if len(error) == 0:
+            self.map = GameMap.fromDict(initInfoMessage['gameMap'], self.screenSize)
+
+            addPlayerMessage = self.gameClient.communicate('addPlayer', {})
+
+            self.playerId = addPlayerMessage['player']['id']
+        else:
+            if error['title'] == 'GameFull':
+                self.gameClient.output('Game is full.\nTry connecting later.')
+                self.gameClient.end()
+
+    def gameStateOnLoop(self):
+        self.canvas.delete('all')
+
         playersDict = self.gameClient.communicate('loop', {})['players']
         players = []
 
         for playerDict in playersDict:
-            players.append(Player.fromDict(self, playerDict))
+            players.append(Player.fromDict(playerDict, self))
 
-        objects = [self]
-        objects.extend(players)
+        for player in players:
+            player.draw()
 
-        return objects
-
-    def update(self):
-        self.canvas.delete('all')
-
-    def draw(self):
-        pass
-
-    def end(self):
+    def gameStateOnEnd(self):
         self.gameClient.communicate('end', {})
-
         self.gameClient.end()
 
+    def end(self):
+        self.mainloop.end()
         self.root.destroy()
 
     def keyPressed(self, event):
@@ -149,23 +193,16 @@ class Game():
 
 
 snakeStyles = {
-    'style1': SnakeStyleX(SnakeStyle('#FF0000', '#000000'), SnakeStyle('#990000', '#222222'))
+    'style1': PlayerRemoteX(SnakeStyle(SnakeStyle.stylePlayer1Draw), SnakeStyle(SnakeStyle.styleRemote1Draw))
 }
 
 
 
 def main():
-    import sys
+    serverAddress = '192.168.1.4'
+    serverPort = 4042
 
-    gameClient = GameClient('192.168.1.4', 4041, True)
-    gameClient.begin()
-
-    try:
-        game = Game(gameClient)
-    except Exception as e:
-        gameClient.end()
-
-        raise e
+    game = Game([400, 400], serverAddress, serverPort)
 
 
 

@@ -60,6 +60,7 @@ class GameClient():
 
     @JSONEncoding.encodeDecoratorX(True)
     def sendData(self, message):
+        message += '_'
         data = message.encode('utf-8')
 
         self.socket.sendall(data)

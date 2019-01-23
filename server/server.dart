@@ -294,8 +294,19 @@ class GameClient {
         }
     }
 
-    void listen(List<int> data) {
-        Map<String, dynamic> message = json.decode(String.fromCharCodes(data).trim());
+    void listen(List<int> dataX) {
+        String datasUnsplitted = String.fromCharCodes(dataX).trim();
+        List<String> datas = datasUnsplitted.split('_');
+
+        for (String data in datas) {
+            if (data.length > 0) {
+                this.onData(data);
+            }
+        }
+    }
+
+    void onData(String data) {
+        Map<String, dynamic> message = json.decode(data);
 
         String title = message['title'];
 
@@ -472,22 +483,20 @@ class GameMap {
     int xScale;
     int yScale;
 
-    GameMap(this.xSize, this.ySize, this.xScale, this.yScale);
+    GameMap(this.xSize, this.ySize);
 
     int getScreenXSize() {
-        return this.xSize*this.xScale;
+        return this.xSize;
     }
 
     int getScreenYSize() {
-        return this.ySize*this.yScale;
+        return this.ySize;
     }
 
     Map<String, dynamic> toMap() {
         Map<String, dynamic> data = {
             'xSize': this.xSize,
             'ySize': this.ySize,
-            'xScale': this.xScale,
-            'yScale': this.yScale,
         };
 
         return data;
@@ -551,8 +560,13 @@ class Game {
                 return responseMessage;
             } else if (title == 'initInfo') {
                 Map<String, dynamic> responseMessage = {
+                    'error': {},
                     'gameMap': this.gameMap.toMap(),
                 };
+
+                if (players.list.getLength() >= 2) {
+                    responseMessage['error']['title'] = 'GameFull';
+                }
 
                 return responseMessage;
             } else if (title == 'changeVel') {
@@ -619,8 +633,8 @@ Future main() async {
 
     ServerSocket server = await ServerSocket.bind(
         '192.168.1.4',
-        4041,
+        4042,
     );
 
-    Game(server, GameMap(25, 25, 20, 20));
+    Game(server, GameMap(25, 25));
 }
