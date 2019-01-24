@@ -272,8 +272,9 @@ class GameClient {
     int id;
     bool outputEnabled;
     Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage;
+    int baseDataLength;
 
-    GameClient(Socket client, int id, Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage, {bool outputEnabled=false}) {
+    GameClient(Socket client, int id, Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage, {bool outputEnabled=false, int baseDataLength=1024}) {
         this.client = client;
         this.address = this.client.remoteAddress.address;
         this.port = this.client.remotePort;
@@ -281,6 +282,7 @@ class GameClient {
 
         this.outputEnabled = outputEnabled;
 
+        this.baseDataLength = baseDataLength;
         this.onMessage = onMessage;
 
         this.client.listen(this.listen);
@@ -321,6 +323,15 @@ class GameClient {
 
     void sendData(Map<String, dynamic> message) {
         String data = json.encode(message);
+
+        int totalDataLength = data.length+1;
+        int dataMult = totalDataLength~/this.baseDataLength;
+
+        if (dataMult != totalDataLength/this.baseDataLength) {
+            dataMult += 1;
+        }
+
+        data = '${dataMult}'+data;
 
         this.client.write(data);
     }
@@ -366,23 +377,39 @@ class Mainloop {
 
 class Player extends SocketStreamableItem {
     Snake snake;
+    bool playing;
 
-    Player(int id, int x, int y):super(id) {
-        this.snake = Snake(x, y);
+    Player(int id):super(id) {
+        this.playing = false;
+    }
+
+    void startPlaying(int x, int y, bool Function(int x, int y) blockIsSnake, bool Function(int x, int y) blockIsMaze) {
+        this.playing = true;
+        this.snake = Snake(x, y, blockIsSnake, blockIsMaze);
+    }
+
+    void endPlaying() {
+        this.playing = false;
+        this.snake = null;
     }
 
     Map<String, dynamic> toMap(int playerId) {
         Map<String, dynamic> data = {
             'id': this.id,
-            'snake': this.snake.toMap(),
+            'playing': this.playing,
             'isPlayer': (playerId == this.id),
         };
+        if (this.playing) {
+            data['snake'] = this.snake.toMap();
+        }
 
         return data;
     }
 
     void update() {
-        this.snake.update();
+        if (this.playing) {
+            this.snake.update();
+        }
     }
 }
 
@@ -418,7 +445,10 @@ class Snake {
 
     SnakeStyle style;
 
-    Snake(int x, int y) {
+    bool Function(int x, int y) blockIsSnake;
+    bool Function(int x, int y) blockIsMaze;
+
+    Snake(int x, int y, this.blockIsSnake, this.blockIsMaze) {
         this.blocks = LinkedList<SnakeBlock>();
         this.blocks.addToBegin(SnakeBlock(x, y, true));
         this.length = 5;
@@ -434,6 +464,14 @@ class Snake {
         SnakeBlock pos = this.blocks.get(0);
         int newX = pos.x+this.velX;
         int newY = pos.y+this.velY;
+
+        if (this.blockIsSnake(newX, newY)) {
+            print('snake');
+        }
+        if (this.blockIsMaze(newX, newY)) {
+            print('maze');
+        }
+
         pos.isHead = false;
         SnakeBlock newPos = SnakeBlock(newX, newY, true);
 
@@ -454,6 +492,23 @@ class Snake {
                 this.velChanged = true;
             }
         }
+    }
+
+    bool isBlock(int x, int y) {
+        bool Function(Node<SnakeBlock>, bool) nodeFunc = (Node<SnakeBlock> node, bool tempIsBlock) {
+            if (node.value.x == x && node.value.y == y) {
+                tempIsBlock = true;
+            }
+            return tempIsBlock;
+        };
+        Node<SnakeBlock> Function(Node<SnakeBlock>) nodeGetNext = (Node<SnakeBlock> node) {
+            return node.next;
+        };
+
+        Proceeder<Node<SnakeBlock>, bool> proceeder = Proceeder(this.blocks.beginNode);
+        bool isBlock = proceeder.proceed(nodeFunc, nodeGetNext, false);
+
+        return isBlock;
     }
 
     Map<String, dynamic> toMap() {
@@ -477,26 +532,93 @@ class Snake {
     }
 }
 
+class MazeBlock {
+    int x;
+    int y;
+
+    MazeBlock(this.x, this.y);
+
+    Map<String, dynamic> toMap() {
+        Map<String, dynamic> data = {
+            'x': x,
+            'y': y,
+        };
+
+        return data;
+    }
+}
+
+class Maze {
+    List<MazeBlock> blocks;
+
+    Maze() {
+        this.blocks = List<MazeBlock>();
+    }
+
+    void addBlock(int x, int y) {
+        this.blocks.add(MazeBlock(x, y));
+    }
+
+    bool isBlock(int x, int y) {
+        bool isBlock = false;
+        for (MazeBlock block in this.blocks) {
+            if (block.x == x && block.y == y) {
+                isBlock = true;
+            }
+        }
+
+        return isBlock;
+    }
+
+    Map<String, dynamic> toMap() {
+        List<Map<String, dynamic>> blocksMap = [];
+
+        for (MazeBlock block in this.blocks) {
+            blocksMap.add(block.toMap());
+        }
+
+        Map<String, dynamic> data = {
+            'blocks': blocksMap,
+        };
+
+        return data;
+    }
+}
+
 class GameMap {
     int xSize;
     int ySize;
-    int xScale;
-    int yScale;
 
-    GameMap(this.xSize, this.ySize);
+    Maze maze;
 
-    int getScreenXSize() {
-        return this.xSize;
+    GameMap(this.xSize, this.ySize) {
+        this.maze = Maze();
     }
 
-    int getScreenYSize() {
-        return this.ySize;
+    void addBlock(int x, int y) {
+        this.maze.addBlock(x, y);
+    }
+
+    void createBorder() {
+        for (int x=0; x<this.xSize; x++) {
+            this.maze.addBlock(x, 0);
+        }
+        for (int x=0; x<this.xSize; x++) {
+            this.maze.addBlock(x, this.ySize-1);
+        }
+        for (int y=0; y<this.ySize; y++) {
+            this.maze.addBlock(0, y);
+        }
+        for (int y=0; y<this.ySize; y++) {
+            this.maze.addBlock(this.xSize-1, y);
+        }
     }
 
     Map<String, dynamic> toMap() {
         Map<String, dynamic> data = {
             'xSize': this.xSize,
             'ySize': this.ySize,
+            'maze': this.maze.toMap(),
         };
 
         return data;
@@ -510,15 +632,54 @@ class Game {
     GameMap gameMap;
     Mainloop playersUpdateMainloop;
 
-    Game(this.server, this.gameMap) {
+    Game(this.server, int xSize, int ySize) {
+        this.gameMap = GameMap(xSize, ySize);
+        this.gameMap.createBorder();
+
         this.players = SocketStreamableItemsList<Player>();
         this.nextPlayerId = 0;
-
 
         this.playersUpdateMainloop = Mainloop(Duration(milliseconds: 200), this.getPlayersUpdateFunc);
         this.playersUpdateMainloop.start();
 
         this.server.listen(this.newClient);
+    }
+
+    bool blockIsSnake(int x, int y) {
+        bool Function(Node<Player>, bool) nodeFunc = (Node<Player> node, bool tempIsSnakeBlock) {
+            if (node.value.playing) {
+                tempIsSnakeBlock = tempIsSnakeBlock || node.value.snake.isBlock(x, y);
+            }
+            return tempIsSnakeBlock;
+        };
+        Node<Player> Function(Node<Player>) nodeGetNext = (Node<Player> node) {
+            return node.next;
+        };
+
+        Proceeder<Node<Player>, bool> proceeder = Proceeder(this.players.list.beginNode);
+        bool isSnakeBlock = proceeder.proceed(nodeFunc, nodeGetNext, false);
+
+        return isSnakeBlock;
+    }
+
+    bool blockIsMaze(int x, int y) {
+        return this.gameMap.maze.isBlock(x, y);
+    }
+
+    Tuple2<int, int> findFreeBlock() {
+        bool found = false;
+
+        int x;
+        int y;
+
+        while (!found) {
+            x = Random().nextInt(this.gameMap.xSize);
+            y = Random().nextInt(this.gameMap.ySize);
+
+            found = (!this.blockIsSnake(x, y)) && (!this.blockIsMaze(x, y));
+        }
+
+        return Tuple2<int, int>(x, y);
     }
 
     List<void Function()> getPlayersUpdateFunc() {
@@ -540,11 +701,15 @@ class Game {
         int playerId = this.nextPlayerId;
 
         Map<String, dynamic> gameClientOnMessage(String title, Map<String, dynamic> message) {
-            if (title == 'addPlayer') {
-                int x = Random().nextInt(this.gameMap.xSize);
-                int y = Random().nextInt(this.gameMap.xSize);
+            if (title == 'initInfo') {
+                Map<String, dynamic> responseMessage = {
+                    'error': {},
+                    'gameMap': this.gameMap.toMap(),
+                };
 
-                Player player = Player(playerId, x, y);
+                return responseMessage;
+            } else if (title == 'addPlayer') {
+                Player player = Player(playerId);
                 this.players.add(player);
 
                 Map<String, dynamic> responseMessage = {
@@ -552,21 +717,31 @@ class Game {
                 };
 
                 return responseMessage;
+            } else if (title == 'startPlaying') {
+                Player player = this.players.get(playerId);
+                Tuple2<int, int> pos = this.findFreeBlock();
+                int x = pos.item1;
+                int y = pos.item2;
+
+                player.startPlaying(x, y, this.blockIsSnake, this.blockIsMaze);
+
+                return {};
+            } else if (title == 'endPlaying') {
+                Player player = this.players.get(playerId);
+
+                player.endPlaying();
+
+                return {};
             } else if (title == 'loop') {
                 Map<String, dynamic> responseMessage = {
                     'players': this.players.toList(playerId),
                 };
 
                 return responseMessage;
-            } else if (title == 'initInfo') {
+            } else if (title == 'spectate') {
                 Map<String, dynamic> responseMessage = {
-                    'error': {},
-                    'gameMap': this.gameMap.toMap(),
+                    'players': this.players.toList(null),
                 };
-
-                if (players.list.getLength() >= 2) {
-                    responseMessage['error']['title'] = 'GameFull';
-                }
 
                 return responseMessage;
             } else if (title == 'changeVel') {
@@ -632,9 +807,9 @@ Future main() async {
     // test();
 
     ServerSocket server = await ServerSocket.bind(
-        '192.168.1.4',
+        '192.168.1.3',
         4042,
     );
 
-    Game(server, GameMap(25, 25));
+    Game(server, 25, 25);
 }

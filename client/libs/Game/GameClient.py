@@ -16,12 +16,13 @@ class SocketXList():
         self.list_.add(item)
 
 class GameClient():
-    def __init__(self, address, port, outputEnabled=False):
+    def __init__(self, address, port, outputEnabled=False, baseDataLength=1024):
         self.address = address
         self.port = port
         self.id = None
 
         self.outputEnabled = outputEnabled
+        self.baseDataLength = baseDataLength
 
         self.socket = socket.socket()
 
@@ -29,12 +30,12 @@ class GameClient():
         if self.outputEnabled:
             print(text)
 
-    def begin(self, responseDataLength=1024):
+    def begin(self):
         self.socket.connect((self.address, self.port))
 
         self.output('Connected')
 
-        message = self.communicate('beginCommunication', None, responseDataLength)
+        message = self.communicate('beginCommunication', {})
 
         self.id = message['id']
 
@@ -50,13 +51,24 @@ class GameClient():
         self.socket.close()
 
     @JSONEncoding.decodeDecorator
-    def recieveData(self, dataLength=1024):
+    def recieveData(self):
+
         data = b''
 
         while data == b'':
-            data = self.socket.recv(1024)
+            data = self.socket.recv(self.baseDataLength)
 
-        return str(data.decode('utf-8'))
+        data = str(data.decode('utf-8'))
+
+        dataMult = int(data[0])
+        data = data[1:]
+
+        for i in range(dataMult-1):
+            newData = self.socket.recv(self.baseDataLength)
+            newData = str(newData.decode('utf-8'))
+            data += newData
+
+        return data
 
     @JSONEncoding.encodeDecoratorX(True)
     def sendData(self, message):
@@ -65,13 +77,13 @@ class GameClient():
 
         self.socket.sendall(data)
 
-    def communicate(self, title, sendData, responseDataLength=1024):
+    def communicate(self, title, sendData):
         sendMessage = {
             'title': title,
             'data': sendData,
         }
 
         self.sendData(sendMessage)
-        message = self.recieveData(responseDataLength)
+        message = self.recieveData()
 
         return message
