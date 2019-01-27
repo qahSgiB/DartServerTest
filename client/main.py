@@ -8,6 +8,24 @@ from libs.Game.State import StateManager
 
 
 
+class SnakeEliminator():
+    def __init__(self, type, playerName=None):
+        self.type = type
+        self.playerName = playerName
+
+    def getMessage(self):
+        if self.type == 'maze':
+            return 'eliminated by wall'
+        elif self.type == 'snake':
+            return 'eliminated by {name}'.format(name=self.playerName)
+
+    def fromDict(snakeEliminatorDict):
+        type = snakeEliminatorDict['type']
+        if type == 'maze':
+            return SnakeEliminator(type)
+        elif type == 'snake':
+            return SnakeEliminator(type, snakeEliminatorDict['playerName'])
+
 class PlayerRemoteX():
     def __init__(self, ifPlayer, ifRemote):
         self.ifPlayer = ifPlayer
@@ -97,9 +115,11 @@ class Snake():
         return Snake([SnakeBlock.fromDict(blockDict) for blockDict in snakeDict['blocks']], snakeStyles[snakeDict['style']].get(isPlayer))
 
 class Player():
-    def __init__(self, id, snake):
+    def __init__(self, id, name, playing, snake):
         self.id = id
+        self.name = name
 
+        self.playing = playing
         self.snake = snake
 
     def draw(self, game):
@@ -107,8 +127,9 @@ class Player():
 
     def fromDict(playerDict):
         isPlayer = playerDict['isPlayer']
+        playing = playerDict['playing']
 
-        return Player(playerDict['id'], Snake.fromDict(playerDict['snake'], isPlayer))
+        return Player(playerDict['id'], playerDict['name'], playing, Snake.fromDict(playerDict['snake'], isPlayer) if playing else None)
 
 class MazeBlock():
     def __init__(self, pos):
@@ -148,27 +169,33 @@ class GameMap():
         return list(map(lambda zip_: int(zip_[0]*zip_[1]), zip(self.size, self.scale)))
 
 class Game():
-    def __init__(self, screenSize, gameServerAddress, gameServerPort):
+    def __init__(self, screenSize, gameServerAddress, gameServerPort, playerName):
         self.gameServerAddress = gameServerAddress
         self.gameServerPort = gameServerPort
         self.gameClient = None
+
+        self.playerName = playerName
 
         self.screenSize = screenSize.copy()
 
         self.root = tkinter.Tk()
         self.root.geometry('{width}x{height}'.format(width=self.screenSize[0], height=self.screenSize[1]))
         self.root.protocol('WM_DELETE_WINDOW', self.end)
-        self.root.title('Snako pythonish client')
+        self.root.title('Snako pythonish client GUI')
+        self.root.resizable(False, False)
 
         self.canvas = tkinter.Canvas(self.root, width=self.screenSize[0], height=self.screenSize[1], bg='#FFFFFF', highlightthickness=0)
         self.canvas.pack()
         self.canvas.bind_all('<Key>', lambda event: self.stateManager.event('keyPressed', event))
 
-        self.stateManager = StateManager(self.canvas.after, self.canvas.after_cancel, 50)
+        self.after = self.canvas.after
+        self.afterCancel = self.canvas.after_cancel
+
+        self.stateManager = StateManager(self.after, self.afterCancel, 50)
         self.stateManager.addState('main', self.mainStateOnStart, self.mainStateOnLoop, self.mainStateOnEnd, {'keyPressed': self.mainStateOnKeyPressed})
         self.error = {}
         self.stateManager.addState('game', self.gameStateOnStart, self.gameStateOnLoop, self.gameStateOnEnd, {'keyPressed': self.gameStateOnKeyPressed})
-        # self.stateManager.addState('gameSpectate', self.gameSpectateStateOnStart, self.gameSpectateStateOnLoop, self.gameSpectateStateOnEnd, {'keyPressed': self.gameSpectateStateOnKeyPressed})
+        self.stateManager.addState('settings', self.settingsStateOnStart, self.settingsStateOnLoop, self.settingsStateOnEnd, {'keyPressed': self.settingsStateOnKeyPressed})
 
         self.stateManager.setState('main')
 
@@ -181,6 +208,14 @@ class Game():
         self.stateManager.endState()
         self.root.destroy()
 
+    def createTexts(self, x, y, texts, fontSize):
+        fontSize = self.fontSize(fontSize)
+
+        textPos = -fontSize*(len(texts)-1)
+        for i in range(len(texts)):
+            self.canvas.create_text(x, y+textPos, text=texts[i], font=('Purisa', fontSize))
+            textPos += 2*fontSize
+
     # -------------------- state: game -------------------- #
     #
     # events: keyPressed
@@ -192,15 +227,18 @@ class Game():
         self.gameSGameClient = GameClient(self.gameServerAddress, self.gameServerPort, True)
         self.gameSGameClient.begin()
 
-        self.gameSStateManager = StateManager(self.canvas.after, self.canvas.after_cancel, 50)
+        self.gameSStateManager = StateManager(self.after, self.afterCancel, 50)
         self.gameSStateManager.addState('game.playing', self.gameSPlayingStateOnStart, self.gameSPlayingStateOnLoop, self.gameSPlayingStateOnEnd, {'keyPressed': self.gameSPlayingStateOnKeyPressed})
         self.gameSStateManager.addState('game.spectating', self.gameSSpectatingStateOnStart, self.gameSSpectatingStateOnLoop, self.gameSSpectatingStateOnEnd, {'keyPressed': self.gameSSpectatingStateOnKeyPressed})
+        self.gameSStateManager.addState('game.dead', self.gameSDeadStateOnStart, self.gameSDeadStateOnLoop, self.gameSDeadStateOnEnd, {'keyPressed': self.gameSDeadStateOnKeyPressed})
 
         initInfoMessage = self.gameSGameClient.communicate('initInfo', {})
         self.gameSMap = GameMap.fromDict(initInfoMessage['gameMap'], self.screenSize)
 
-        addPlayerMessage = self.gameSGameClient.communicate('addPlayer', {})
+        addPlayerMessage = self.gameSGameClient.communicate('addPlayer', {'name': self.playerName})
         self.gameSPlayerId = addPlayerMessage['player']['id']
+
+        self.gameSEliminator = None
 
         self.gameSStateManager.setState('game.spectating')
 
@@ -208,6 +246,7 @@ class Game():
         pass
 
     def gameStateOnEnd(self):
+        self.gameSStateManager.endState()
         self.gameSGameClient.communicate('end', {})
         self.gameSGameClient.end()
 
@@ -221,7 +260,6 @@ class Game():
         if key == 'space':
             self.gameSStateManager.setState('game.playing')
         if key == 'q':
-            self.gameSStateManager.endState()
             self.stateManager.setState('main')
 
     def gameSSpectatingStateOnStart(self):
@@ -234,11 +272,11 @@ class Game():
         players = []
 
         for playerDict in playersDict:
-            if playerDict['playing']:
-                players.append(Player.fromDict(playerDict))
+            players.append(Player.fromDict(playerDict))
 
         for player in players:
-            player.draw(self)
+            if player.playing:
+                player.draw(self)
 
         self.gameSMap.maze.draw(self)
 
@@ -246,9 +284,25 @@ class Game():
         screenSizeY = self.screenSize[1]
         fontSize = self.fontSize(8)
 
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(1/2)-fontSize*2, text='spectating'.format(address=self.gameServerAddress), font=('Purisa', fontSize))
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(1/2),            text='press <space> to start playing'.format(address=self.gameServerAddress), font=('Purisa', fontSize))
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(1/2)+fontSize*2, text='press <q> to return back to menu'.format(address=self.gameServerAddress), font=('Purisa', fontSize))
+        remotePlayers = []
+        for player in players:
+            if player.id != self.gameSPlayerId:
+                remotePlayers.append(player)
+
+        playersText = ['players']
+        createPlayerText = lambda player: '{name} playing'.format(name=player.name) if player.playing else '{name} spectating'.format(name=player.name)
+
+        if len(remotePlayers) > 4:
+            for i in range(3):
+                playersText.append(createPlayerText(remotePlayers[i]))
+            playersText.append('and {otherPlayersCount} other'.format(otherPlayersCount=len(remotePlayers)-3))
+        else:
+            for player in remotePlayers:
+                playersText.append(createPlayerText(player))
+
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), ['spectating', 'your name is {name}'.format(name=self.playerName)], 8)
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(2/3), ['press <space> to start playing', 'press <q> to return back to menu'], 8)
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(5/6), playersText, 8)
 
     def gameSSpectatingStateOnEnd(self):
         pass
@@ -297,13 +351,79 @@ class Game():
                 'message': errorMessage
             }
 
-            self.gameSStateManager.endState()
             self.stateManager.setState('main')
+        else:
+            self.gamePlayingSEliminationResetAfter = None
+            self.gamePlayingSEliminationId = None
 
     def gameSPlayingStateOnLoop(self):
+        loopInfoDict = self.gameSGameClient.communicate('loopInfo', {})
+
+        if loopInfoDict['dead']:
+            self.gameSEliminator = SnakeEliminator.fromDict(loopInfoDict['deadInfo'])
+
+            self.gameSStateManager.setState('game.dead')
+        else:
+            self.canvas.delete('all')
+
+            playersDict = self.gameSGameClient.communicate('loop', {})['players']
+            players = []
+
+            for playerDict in playersDict:
+                if playerDict['playing']:
+                    players.append(Player.fromDict(playerDict))
+
+            for player in players:
+                player.draw(self)
+
+            self.gameSMap.maze.draw(self)
+
+            if loopInfoDict['elimination']:
+                if self.gamePlayingSEliminationId != None:
+                    self.gamePlayingSEliminationId = None
+                    self.afterCancel(self.gamePlayingSEliminationResetAfter)
+                    self.gamePlayingSEliminationResetAfter = None
+
+                self.gamePlayingSEliminationId = loopInfoDict['eliminationInfo']['playerName']
+                self.gamePlayingSEliminationResetAfter = self.after(1000, self.gamePlayingSEliminationReset)
+
+            if self.gamePlayingSEliminationId != None:
+                screenSizeX = self.screenSize[0]
+                screenSizeY = self.screenSize[1]
+
+                self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), ['elimination {id}'.format(id=self.gamePlayingSEliminationId)], 8)
+
+    def gameSPlayingStateOnEnd(self):
+        startPlayingMessage = self.gameSGameClient.communicate('endPlaying', {})
+
+        if self.gamePlayingSEliminationId != None:
+            self.gamePlayingSEliminationId = None
+            self.afterCancel(self.gamePlayingSEliminationResetAfter)
+            self.gamePlayingSEliminationResetAfter = None
+
+    def gamePlayingSEliminationReset(self):
+        self.gamePlayingSEliminationId = None
+        self.gamePlayingSEliminationResetAfter = None
+
+    # -------------------- state: game.dead -------------------- #
+    #
+    # events: keyPressed
+    #
+    def gameSDeadStateOnKeyPressed(self, event):
+        key = event.keysym
+
+        if key == 'space':
+            self.gameSStateManager.setState('game.spectating')
+        if key == 'q':
+            self.stateManager.setState('main')
+
+    def gameSDeadStateOnStart(self):
+        pass
+
+    def gameSDeadStateOnLoop(self):
         self.canvas.delete('all')
 
-        playersDict = self.gameSGameClient.communicate('loop', {})['players']
+        playersDict = self.gameSGameClient.communicate('spectate', {})['players']
         players = []
 
         for playerDict in playersDict:
@@ -315,8 +435,13 @@ class Game():
 
         self.gameSMap.maze.draw(self)
 
-    def gameSPlayingStateOnEnd(self):
-        startPlayingMessage = self.gameSGameClient.communicate('endPlaying', {})
+        screenSizeX = self.screenSize[0]
+        screenSizeY = self.screenSize[1]
+
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), [self.gameSEliminator.getMessage(), 'press <space> to start playing', 'press <q> to return back to menu'], 8)
+
+    def gameSDeadStateOnEnd(self):
+        self.gameSEliminator = None
 
     # -------------------- state: main -------------------- #
     #
@@ -327,6 +452,8 @@ class Game():
 
         if key == 'space':
             self.stateManager.setState('game')
+        elif key == 'a':
+            self.stateManager.setState('settings')
         elif key == 'q':
             self.end()
 
@@ -338,25 +465,63 @@ class Game():
 
         screenSizeX = self.screenSize[0]
         screenSizeY = self.screenSize[1]
-        fontSize = self.fontSize(8)
 
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(5/8)-fontSize, text='server ip address: {address}'.format(address=self.gameServerAddress), font=('Purisa', self.fontSize(8)))
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(5/8)+fontSize, text='server port: {port}'.format(port=self.gameServerPort), font=('Purisa', self.fontSize(8)))
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(6/8)-fontSize, text='this game GUI was made using tkinter', font=('Purisa', self.fontSize(8)))
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(6/8)+fontSize, text='so please xpect some wierd crashes', font=('Purisa', self.fontSize(8)))
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(7/8)-fontSize, text='made by Tomas Sumsala', font=('Purisa', self.fontSize(8)))
-        self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(7/8)+fontSize, text='github: qahSgiB/DartServerTest', font=('Purisa', self.fontSize(8)))
-
+        mainTexts = ['press <space> to enter game', 'press <a> to enter settings', 'press <q> to exit']
         if len(self.error) > 0:
-            self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(1/2)-fontSize*2, text='press <space> to start game', font=('Purisa', self.fontSize(8)))
-            self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(1/2)           , text='press <q> to exit', font=('Purisa', self.fontSize(8)))
-            self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(1/2)+fontSize*2, text=self.error['message'], font=('Purisa', self.fontSize(8)))
-        else:
-            self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(1/2)-fontSize, text='press <space> to start game', font=('Purisa', self.fontSize(8)))
-            self.canvas.create_text(screenSizeX*(1/2), screenSizeY*(1/2)+fontSize, text='press <q> to exit', font=('Purisa', self.fontSize(8)))
+            mainTexts.append(self.error['message'])
+
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), mainTexts, 8)
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(5/8), ['server ip address: {address}'.format(address=self.gameServerAddress), 'server port: {port}'.format(port=self.gameServerPort)], 8)
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(3/4), ['this game GUI was made using tkinter', 'so please expect some wierd crashes'], 8)
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(7/8), ['made by Tomas Sumsala', 'github: qahSgiB/DartServerTest'], 8)
 
     def mainStateOnEnd(self):
         self.error = {}
+
+    # -------------------- state: settings -------------------- #
+    #
+    # events: keyPressed
+    #
+    def settingsStateOnKeyPressed(self, event):
+        key = event.keysym
+
+        if self.settingsSChangeSetting == 'name':
+            if key in list('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'):
+                self.settingsSNewPlayerName += key
+            elif key == 'BackSpace':
+                if len(self.settingsSNewPlayerName) > 0:
+                    self.settingsSNewPlayerName = self.settingsSNewPlayerName[:-1]
+            elif key == 'space':
+                if len(self.settingsSNewPlayerName) > 0:
+                    self.playerName = self.settingsSNewPlayerName
+                self.settingsSNewPlayerName = ''
+                self.settingsSChangeSetting = None
+        else:
+            if key == 'a':
+                self.settingsSChangeSetting = 'name'
+                self.settingsSNewPlayerName = ''
+            elif key == 'q':
+                self.stateManager.setState('main')
+
+    def settingsStateOnStart(self):
+        self.settingsSChangeSetting = None
+        self.settingsSNewPlayerName = ''
+
+    def settingsStateOnLoop(self):
+        self.canvas.delete('all')
+
+        screenSizeX = self.screenSize[0]
+        screenSizeY = self.screenSize[1]
+
+        if self.settingsSChangeSetting == 'name':
+            nameSettingsTexts = ['your new name is {name}'.format(name=self.settingsSNewPlayerName), 'type your new name', 'press <space> when you are done']
+        else:
+            nameSettingsTexts = ['press <a> to change your name', 'your current name is {name}'.format(name=self.playerName)]
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(1/3), nameSettingsTexts, 8)
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(2/3), ['press <q> to exit'], 8)
+
+    def settingsStateOnEnd(self):
+        pass
 
 
 
@@ -370,10 +535,14 @@ mazeStyles = {
 
 
 def main():
-    serverAddress = '192.168.1.3'
+    import os
+
+    serverAddress = '192.168.1.6'
     serverPort = 4042
 
-    game = Game([400, 400], serverAddress, serverPort)
+    playerName = os.getlogin()
+
+    game = Game([400, 400], serverAddress, serverPort, playerName)
 
 
 

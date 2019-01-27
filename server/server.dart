@@ -1,5 +1,6 @@
 /*
  * TODO: errors
+ * TODO: boosts
  *
  */
 
@@ -7,264 +8,260 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:collection';
 
 import 'package:tuple/tuple.dart';
 
 
 
-class Node<T> {
-    T value;
-    Node next;
-    Node previous;
+/* -------------------- lib: DataStructures/LinkedList --------------------
+ *
+ */
+ class LinkedListIterator<T> implements Iterator<T> {
+     Node<T> node;
 
-    Node(T value) {
-        this.value = value;
-    }
-}
+     LinkedListIterator(Node<T> beginNode) {
+         this.node = Node<T>(null);
+         this.node.next = beginNode;
+     }
 
-class Proceeder<nodeType, funcReturnType> {
-    nodeType beginNode;
+     bool moveNext() {
+         this.node = this.node.next;
 
-    Proceeder(this.beginNode);
+         return this.node != null;
+     }
 
-    funcReturnType proceed(funcReturnType Function(nodeType, funcReturnType) func, nodeType Function(nodeType) getNext, funcReturnType startResult) {
-        nodeType temp = this.beginNode;
-        funcReturnType result = startResult;
+     T get current {
+         return this.node.value;
+     }
+ }
 
-        while (temp != null) {
-            result = func(temp, result);
+ class Node<T> {
+     T value;
+     Node<T> next;
+     Node<T> previous;
 
-            temp = getNext(temp);
-        }
+     Node(T value) {
+         this.value = value;
+     }
 
-        return result;
-    }
-}
+     Node<T> getNext() {
+         return this.next;
+     }
 
-class LinkedList<T> {
-    Node<T> beginNode;
-    Node<T> endNode;
+     Node<T> getPrevious() {
+         return this.previous;
+     }
+ }
 
-    LinkedList() {
+ class Proceeder<nodeType, funcReturnType> {
+     nodeType beginNode;
 
-    }
+     Proceeder(this.beginNode);
 
-    void addToEnd(T value) {
-        if (this.beginNode == null) {
-            this.beginNode = Node<T>(value);
-            this.endNode = this.beginNode;
-        } else {
-            this.endNode.next = Node<T>(value);
-            this.endNode.next.previous = this.endNode;
-            this.endNode = this.endNode.next;
-        }
-    }
+     funcReturnType proceed(funcReturnType Function(nodeType, funcReturnType) func, nodeType Function(nodeType) getNext, funcReturnType startResult) {
+         nodeType temp = this.beginNode;
+         funcReturnType result = startResult;
 
-    void add(T value) {
-        this.addToEnd(value);
-    }
+         while (temp != null) {
+             result = func(temp, result);
 
-    void addToBegin(T value) {
-        if (this.beginNode == null) {
-            this.beginNode = Node<T>(value);
-            this.endNode = this.beginNode;
-        } else {
-            this.beginNode.previous = Node<T>(value);
-            this.beginNode.previous.next = this.beginNode;
-            this.beginNode = this.beginNode.previous;
-        }
-    }
+             temp = getNext(temp);
+         }
 
-    T popFromBegin() {
-        return this.pop(0);
-    }
+         return result;
+     }
+ }
 
-    T popFromEnd() {
-        return this.pop(this.getLength()-1);
-    }
+ class LinkedList<T> with IterableMixin<T> {
+     Node<T> beginNode;
+     Node<T> endNode;
 
-    T get(int getIndex) {
-        if (getIndex > this.getLength()-1 || getIndex < 0) {
-            return null;
-        } else {
-            Tuple2<T, int> Function(Node<T>, Tuple2<T, int>) nodeFunc = (Node<T> node, Tuple2<T, int> info) {
-                int index = info.item2;
-                T result = info.item1;
+     LinkedList();
 
-                if (index == getIndex) {
-                    return Tuple2<T, int>(node.value, index+1);
-                } else {
-                    return Tuple2<T, int>(result, index+1);
-                }
-            };
-            Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
-                return node.next;
-            };
+     void addToEnd(T value) {
+         if (this.beginNode == null) {
+             this.beginNode = Node<T>(value);
+             this.endNode = this.beginNode;
+         } else {
+             this.endNode.next = Node<T>(value);
+             this.endNode.next.previous = this.endNode;
+             this.endNode = this.endNode.next;
+         }
+     }
 
-            Proceeder<Node<T>, Tuple2<T, int>> proceeder = Proceeder<Node<T>, Tuple2<T, int>>(this.beginNode);
-            Tuple2<T, int> getValue = proceeder.proceed(nodeFunc, nodeGetNext, Tuple2<T, int>(null, 0));
+     void add(T value) {
+         this.addToEnd(value);
+     }
 
-            return getValue.item1;
-        }
-    }
+     void addToBegin(T value) {
+         if (this.beginNode == null) {
+             this.beginNode = Node<T>(value);
+             this.endNode = this.beginNode;
+         } else {
+             this.beginNode.previous = Node<T>(value);
+             this.beginNode.previous.next = this.beginNode;
+             this.beginNode = this.beginNode.previous;
+         }
+     }
 
-    T pop(int index) {
-        if (index < 0 || index > this.getLength()-1) {
-            return null;
-        } else if (this.getLength() == 1) {
-            Node<T> beginNodeH = this.beginNode;
-            this.beginNode = null;
-            this.endNode = null;
+     T popFromBegin() {
+         return this.pop(0);
+     }
 
-            return beginNodeH.value;
-        } else if (index == 0) {
-            Node<T> beginNodeH = this.beginNode;
-            this.beginNode = this.beginNode.next;
-            this.beginNode.previous = null;
+     T popFromEnd() {
+         return this.pop(this.getLength()-1);
+     }
 
-            return beginNodeH.value;
-        } else if (index == this.getLength()-1) {
-            Node<T> endNodeH = this.endNode;
-            this.endNode = this.endNode.previous;
-            this.endNode.next = null;
+     T get(int getIndex) {
+         if (getIndex > this.getLength()-1 || getIndex < 0) {
+             return null;
+         } else {
+             Tuple2<T, int> Function(Node<T>, Tuple2<T, int>) nodeFunc = (Node<T> node, Tuple2<T, int> info) {
+                 int index = info.item2;
+                 T result = info.item1;
 
-            return endNodeH.value;
-        } else {
-            Node<T> temp = this.beginNode;
+                 if (index == getIndex) {
+                     return Tuple2<T, int>(node.value, index+1);
+                 } else {
+                     return Tuple2<T, int>(result, index+1);
+                 }
+             };
+             Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
+                 return node.next;
+             };
 
-            for (int i=0; i<index; i++) {
-                temp = temp.next;
-            }
+             Proceeder<Node<T>, Tuple2<T, int>> proceeder = Proceeder<Node<T>, Tuple2<T, int>>(this.beginNode);
+             Tuple2<T, int> getValue = proceeder.proceed(nodeFunc, nodeGetNext, Tuple2<T, int>(null, 0));
 
-            temp.previous.next = temp.next;
-            temp.next.previous = temp.previous;
+             return getValue.item1;
+         }
+     }
 
-            return temp.value;
-        }
-    }
+     T pop(int index) {
+         if (index < 0 || index > this.getLength()-1) {
+             return null;
+         } else if (this.getLength() == 1) {
+             Node<T> beginNodeH = this.beginNode;
+             this.beginNode = null;
+             this.endNode = null;
 
-    int getLength() {
-        int Function(Node<T>, int) nodeFunc = (Node<T> node, int tempLength) {
-            return tempLength+1;
-        };
-        Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
-            return node.next;
-        };
+             return beginNodeH.value;
+         } else if (index == 0) {
+             Node<T> beginNodeH = this.beginNode;
+             this.beginNode = this.beginNode.next;
+             this.beginNode.previous = null;
 
-        Proceeder<Node<T>, int> proceeder = Proceeder(this.beginNode);
-        int length = proceeder.proceed(nodeFunc, nodeGetNext, 0);
+             return beginNodeH.value;
+         } else if (index == this.getLength()-1) {
+             Node<T> endNodeH = this.endNode;
+             this.endNode = this.endNode.previous;
+             this.endNode.next = null;
 
-        return length;
-    }
+             return endNodeH.value;
+         } else {
+             Node<T> temp = this.beginNode;
 
-    List<T> toList() {
-        List<T> Function(Node<T>, List<T>) nodeFunc = (Node<T> node, List<T> tempList) {
-            tempList.add(node.value);
-            return tempList;
-        };
-        Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
-            return node.next;
-        };
+             for (int i=0; i<index; i++) {
+                 temp = temp.next;
+             }
 
-        Proceeder<Node<T>, List<T>> proceeder = Proceeder(this.beginNode);
-        List<T> list = proceeder.proceed(nodeFunc, nodeGetNext, List<T>()).toList();
+             temp.previous.next = temp.next;
+             temp.next.previous = temp.previous;
 
-        return list;
-    }
+             return temp.value;
+         }
+     }
 
-    List<T> find(bool Function(Node<T>) condition) {
-        LinkedList<T> Function(Node<T>, LinkedList<T>) nodeFunc = (Node<T> node, LinkedList<T> tempList) {
-            if (condition(node)) {
-                tempList.add(node.value);
-            }
-            return tempList;
-        };
-        Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
-            return node.next;
-        };
+     int getLength() {
+         int Function(Node<T>, int) nodeFunc = (Node<T> node, int tempLength) {
+             return tempLength+1;
+         };
+         Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
+             return node.next;
+         };
 
-        Proceeder<Node<T>, LinkedList<T>> proceeder = Proceeder(this.beginNode);
-        List<T> list = proceeder.proceed(nodeFunc, nodeGetNext, LinkedList<T>()).toList();
+         Proceeder<Node<T>, int> proceeder = Proceeder(this.beginNode);
+         int length = proceeder.proceed(nodeFunc, nodeGetNext, 0);
 
-        return list;
-    }
+         return length;
+     }
 
-    List<int> findIndex(bool Function(Node<T>) condition) {
-        Tuple2<LinkedList<int>, int> Function(Node<T>, Tuple2<LinkedList<int>, int>) nodeFunc = (Node<T> node, Tuple2<LinkedList<int>, int> temp) {
-            int index = temp.item2;
-            LinkedList<int> tempList = temp.item1;
+     List<T> toList({bool growable: true}) {
+         List<T> Function(Node<T>, List<T>) nodeFunc = (Node<T> node, List<T> tempList) {
+             tempList.add(node.value);
+             return tempList;
+         };
+         Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
+             return node.next;
+         };
 
-            if (condition(node)) {
-                tempList.add(index);
-            }
-            return Tuple2<LinkedList<int>, int>(tempList, index+1);
-        };
-        Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
-            return node.next;
-        };
+         Proceeder<Node<T>, List<T>> proceeder = Proceeder(this.beginNode);
+         List<T> list = proceeder.proceed(nodeFunc, nodeGetNext, List<T>());
 
-        Proceeder<Node<T>, Tuple2<LinkedList<int>, int>> proceeder = Proceeder<Node<T>, Tuple2<LinkedList<int>, int>>(this.beginNode);
-        List<int> list = proceeder.proceed(nodeFunc, nodeGetNext, Tuple2<LinkedList<int>, int>(LinkedList<int>(), 0)).item1.toList();
+         return list;
+     }
 
-        return list;
-    }
-}
+     LinkedList<newT> map<newT>(newT Function(T) mapFunction) {
+         LinkedList<newT> Function(Node<T>, LinkedList<newT>) nodeFunc = (Node<T> node, LinkedList<newT> tempList) {
+             tempList.add(mapFunction(node.value));
+             return tempList;
+         };
+         Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
+             return node.next;
+         };
 
-class SocketStreamableItem {
-    int id;
+         Proceeder<Node<T>, LinkedList<newT>> proceeder = Proceeder(this.beginNode);
+         LinkedList<newT> mappedList = proceeder.proceed(nodeFunc, nodeGetNext, LinkedList<newT>());
 
-    SocketStreamableItem(this.id);
+         return mappedList;
+     }
 
-    Map<String, dynamic> toMap(int playerId) {
-        return {};
-    }
-}
+     LinkedList<T> filter(bool Function(Node<T>) condition) {
+         LinkedList<T> Function(Node<T>, LinkedList<T>) nodeFunc = (Node<T> node, LinkedList<T> tempList) {
+             if (condition(node)) {
+                 tempList.add(node.value);
+             }
+             return tempList;
+         };
+         Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
+             return node.next;
+         };
 
-class SocketStreamableItemsList<T extends SocketStreamableItem> {
-    LinkedList<T> list;
+         Proceeder<Node<T>, LinkedList<T>> proceeder = Proceeder(this.beginNode);
+         LinkedList<T> list = proceeder.proceed(nodeFunc, nodeGetNext, LinkedList<T>());
 
-    SocketStreamableItemsList() {
-        list = LinkedList<T>();
-    }
+         return list;
+     }
 
-    List<int> getIndex(int id) {
-        return this.list.findIndex((Node<T> item) {return item.value.id == id;});
-    }
+     List<int> filterIndex(bool Function(Node<T>) condition) {
+         Tuple2<LinkedList<int>, int> Function(Node<T>, Tuple2<LinkedList<int>, int>) nodeFunc = (Node<T> node, Tuple2<LinkedList<int>, int> temp) {
+             int index = temp.item2;
+             LinkedList<int> tempList = temp.item1;
 
-    void remove(int id) {
-        List<int> indexes = this.getIndex(id);
+             if (condition(node)) {
+                 tempList.add(index);
+             }
+             return Tuple2<LinkedList<int>, int>(tempList, index+1);
+         };
+         Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
+             return node.next;
+         };
 
-        for (int index in indexes) {
-            this.list.pop(index);
-        }
-    }
+         Proceeder<Node<T>, Tuple2<LinkedList<int>, int>> proceeder = Proceeder<Node<T>, Tuple2<LinkedList<int>, int>>(this.beginNode);
+         List<int> list = proceeder.proceed(nodeFunc, nodeGetNext, Tuple2<LinkedList<int>, int>(LinkedList<int>(), 0)).item1.toList();
 
-    T get(int id) {
-        int index = this.getIndex(id)[0];
+         return list;
+     }
 
-        return this.list.get(index);
-    }
+     Iterator<T> get iterator {
+         return LinkedListIterator<T>(this.beginNode);
+     }
+ }
 
-    void add(T socketStreamableItem) {
-        this.list.add(socketStreamableItem);
-    }
-
-    List<Map<String, dynamic>> toList(int playerId) {
-        List<Map<String, dynamic>> Function(Node<T>, List<Map<String, dynamic>>) nodeFunc = (Node<T> node, List<Map<String, dynamic>> tempList) {
-            tempList.add(node.value.toMap(playerId));
-            return tempList;
-        };
-        Node<T> Function(Node<T>) nodeGetNext = (Node<T> node) {
-            return node.next;
-        };
-
-        Proceeder<Node<T>, List<Map<String, dynamic>>> proceeder = Proceeder(this.list.beginNode);
-        List<Map<String, dynamic>> list = proceeder.proceed(nodeFunc, nodeGetNext, List<Map<String, dynamic>>());
-
-        return list;
-    }
-}
-
+/* -------------------- lib: Game/GameClient --------------------
+ *
+ */
 class GameClient {
     Socket client;
     String address;
@@ -358,6 +355,9 @@ class GameClient {
     }
 }
 
+/* -------------------- lib: Game/Mainloop --------------------
+ *
+ */
 class Mainloop {
     Duration delay;
     List<void Function()> Function() getUpdateFuncs;
@@ -375,17 +375,31 @@ class Mainloop {
     }
 }
 
-class Player extends SocketStreamableItem {
+/* -------------------- Player --------------------
+ *
+ */
+class Player {
+    int id;
+    String name;
+
     Snake snake;
     bool playing;
+    Map<String, dynamic> sendInfo;
+    Game game;
 
-    Player(int id):super(id) {
+    Player(this.id, this.name, this.game) {
         this.playing = false;
+        this.resetSendInfo();
     }
 
-    void startPlaying(int x, int y, bool Function(int x, int y) blockIsSnake, bool Function(int x, int y) blockIsMaze) {
+    void startPlaying() {
+        Tuple2<int, int> pos = game.findFreeBlock();
+        int x = pos.item1;
+        int y = pos.item2;
+
+        this.snake = Snake(x, y, this);
+
         this.playing = true;
-        this.snake = Snake(x, y, blockIsSnake, blockIsMaze);
     }
 
     void endPlaying() {
@@ -396,6 +410,7 @@ class Player extends SocketStreamableItem {
     Map<String, dynamic> toMap(int playerId) {
         Map<String, dynamic> data = {
             'id': this.id,
+            'name': this.name,
             'playing': this.playing,
             'isPlayer': (playerId == this.id),
         };
@@ -407,12 +422,66 @@ class Player extends SocketStreamableItem {
     }
 
     void update() {
-        if (this.playing) {
-            this.snake.update();
-        }
+        this.snake.update();
+    }
+
+    void eliminate(Player player) {
+        this.sendInfo['elimination'] = true;
+
+        Map<String, dynamic> eliminationMap = {
+            'playerName': player.name,
+        };
+
+        this.sendInfo['eliminationInfo'] = eliminationMap;
+    }
+
+    void dead(SnakeEliminator eliminator) {
+        this.sendInfo['dead'] = true;
+
+        Map<String, dynamic> deadMap = eliminator.toMap();
+        this.sendInfo['deadInfo'] = deadMap;
+
+        this.endPlaying();
+    }
+
+    void resetSendInfo() {
+        this.sendInfo = {
+            'dead': false,
+            'elimination': false,
+        };
+    }
+
+    Map<String, dynamic> sendInfoMap() {
+        return Map.from(this.sendInfo);
     }
 }
 
+class PlayerList extends LinkedList<Player> {
+    PlayerList() {
+    }
+
+    Player getById(int id) {
+        return this.filter((Node<Player> node) {return node.value.id == id;}).get(0);
+    }
+
+    Player popById(int id) {
+        int removeIndex = this.filterIndex((Node<Player> node) {return node.value.id == id;})[0];
+
+        return this.pop(removeIndex);
+    }
+
+    List<Map<String, dynamic>> toMap(int playerId) {
+        return this.map((Player player) {return player.toMap(playerId);}).toList();
+    }
+
+    LinkedList<Player> getPlaying() {
+        return this.filter((Node<Player> node) {return node.value.playing;});
+    }
+}
+
+/* -------------------- Snake --------------------
+ *
+ */
 class SnakeBlock {
     int x;
     int y;
@@ -432,27 +501,42 @@ class SnakeBlock {
 }
 
 enum SnakeStyle {
-    style1
+    style1,
+}
+
+class SnakeEliminator {
+    String type;
+    Player player;
+
+    SnakeEliminator(this.type, {this.player: null});
+
+    Map<String, dynamic> toMap() {
+        Map<String, dynamic> data = {
+            'type': this.type,
+        };
+        if (this.player != null) {
+            data['playerName'] = this.player.name;
+        }
+
+        return data;
+    }
 }
 
 class Snake {
     LinkedList<SnakeBlock> blocks;
     int length;
-
     int velX;
     int velY;
     bool velChanged;
 
     SnakeStyle style;
 
-    bool Function(int x, int y) blockIsSnake;
-    bool Function(int x, int y) blockIsMaze;
+    Player player;
 
-    Snake(int x, int y, this.blockIsSnake, this.blockIsMaze) {
+    Snake(int x, int y, this.player) {
         this.blocks = LinkedList<SnakeBlock>();
         this.blocks.addToBegin(SnakeBlock(x, y, true));
         this.length = 5;
-
         this.velX = 1;
         this.velY = 0;
         this.velChanged = false;
@@ -465,23 +549,30 @@ class Snake {
         int newX = pos.x+this.velX;
         int newY = pos.y+this.velY;
 
-        if (this.blockIsSnake(newX, newY)) {
-            print('snake');
+        if (this.player.game.blockIsSnake(newX, newY)) {
+            Player eliminator;
+            for (Player player in  this.player.game.players.getPlaying()) {
+                if (player.snake.isBlock(newX, newY)) {
+                    eliminator = player;
+                }
+            }
+
+            eliminator.eliminate(this.player);
+            this.player.dead(SnakeEliminator('snake', player: eliminator));
+        } else if (this.player.game.blockIsMaze(newX, newY)) {
+            this.player.dead(SnakeEliminator('maze'));
+        } else {
+            pos.isHead = false;
+            SnakeBlock newPos = SnakeBlock(newX, newY, true);
+
+            this.blocks.addToBegin(newPos);
+
+            if (this.blocks.getLength() > this.length) {
+                this.blocks.popFromEnd();
+            }
+
+            this.velChanged = false;
         }
-        if (this.blockIsMaze(newX, newY)) {
-            print('maze');
-        }
-
-        pos.isHead = false;
-        SnakeBlock newPos = SnakeBlock(newX, newY, true);
-
-        this.blocks.addToBegin(newPos);
-
-        if (this.blocks.getLength() > this.length) {
-            this.blocks.popFromEnd();
-        }
-
-        this.velChanged = false;
     }
 
     void changeVel(int newVelX, int newVelY) {
@@ -495,33 +586,18 @@ class Snake {
     }
 
     bool isBlock(int x, int y) {
-        bool Function(Node<SnakeBlock>, bool) nodeFunc = (Node<SnakeBlock> node, bool tempIsBlock) {
-            if (node.value.x == x && node.value.y == y) {
-                tempIsBlock = true;
+        bool isBlock = false;
+        for (SnakeBlock block in this.blocks) {
+            if (block.x == x && block.y == y) {
+                isBlock = true;
             }
-            return tempIsBlock;
-        };
-        Node<SnakeBlock> Function(Node<SnakeBlock>) nodeGetNext = (Node<SnakeBlock> node) {
-            return node.next;
-        };
-
-        Proceeder<Node<SnakeBlock>, bool> proceeder = Proceeder(this.blocks.beginNode);
-        bool isBlock = proceeder.proceed(nodeFunc, nodeGetNext, false);
+        }
 
         return isBlock;
     }
 
     Map<String, dynamic> toMap() {
-        List<Map<String, dynamic>> Function(Node<SnakeBlock>, List<Map<String, dynamic>>) nodeFunc = (Node<SnakeBlock> node, List<Map<String, dynamic>> tempList) {
-            tempList.add(node.value.toMap());
-            return tempList;
-        };
-        Node<SnakeBlock> Function(Node<SnakeBlock>) nodeGetNext = (Node<SnakeBlock> node) {
-            return node.next;
-        };
-
-        Proceeder<Node<SnakeBlock>, List<Map<String, dynamic>>> proceeder = Proceeder(this.blocks.beginNode);
-        List<Map<String, dynamic>> blocksMap = proceeder.proceed(nodeFunc, nodeGetNext, List<Map<String, dynamic>>()).toList();
+        List<Map<String, dynamic>> blocksMap = this.blocks.map<Map<String, dynamic>>((SnakeBlock block) {return block.toMap();}).toList();
 
         Map<String, dynamic> data = {
             'blocks': blocksMap,
@@ -532,6 +608,9 @@ class Snake {
     }
 }
 
+/* -------------------- Map+Maze --------------------
+ *
+ */
 class MazeBlock {
     int x;
     int y;
@@ -625,9 +704,12 @@ class GameMap {
     }
 }
 
+/* -------------------- Game --------------------
+ *
+ */
 class Game {
     ServerSocket server;
-    SocketStreamableItemsList<Player> players;
+    PlayerList players;
     int nextPlayerId;
     GameMap gameMap;
     Mainloop playersUpdateMainloop;
@@ -636,7 +718,7 @@ class Game {
         this.gameMap = GameMap(xSize, ySize);
         this.gameMap.createBorder();
 
-        this.players = SocketStreamableItemsList<Player>();
+        this.players = PlayerList();
         this.nextPlayerId = 0;
 
         this.playersUpdateMainloop = Mainloop(Duration(milliseconds: 200), this.getPlayersUpdateFunc);
@@ -646,18 +728,12 @@ class Game {
     }
 
     bool blockIsSnake(int x, int y) {
-        bool Function(Node<Player>, bool) nodeFunc = (Node<Player> node, bool tempIsSnakeBlock) {
-            if (node.value.playing) {
-                tempIsSnakeBlock = tempIsSnakeBlock || node.value.snake.isBlock(x, y);
+        bool isSnakeBlock = false;
+        for (Player player in this.players.getPlaying()) {
+            if (player.snake.isBlock(x, y)) {
+                isSnakeBlock = true;
             }
-            return tempIsSnakeBlock;
-        };
-        Node<Player> Function(Node<Player>) nodeGetNext = (Node<Player> node) {
-            return node.next;
-        };
-
-        Proceeder<Node<Player>, bool> proceeder = Proceeder(this.players.list.beginNode);
-        bool isSnakeBlock = proceeder.proceed(nodeFunc, nodeGetNext, false);
+        }
 
         return isSnakeBlock;
     }
@@ -683,16 +759,7 @@ class Game {
     }
 
     List<void Function()> getPlayersUpdateFunc() {
-        List<void Function()> Function(Node<Player>, List<void Function()>) nodeFunc = (Node<Player> node, List<void Function()> tempPlayersUpadateFuncs) {
-            tempPlayersUpadateFuncs.add(node.value.update);
-            return tempPlayersUpadateFuncs;
-        };
-        Node<Player> Function(Node<Player>) nodeGetNext = (Node<Player> node) {
-            return node.next;
-        };
-
-        Proceeder<Node<Player>, List<void Function()>> proceeder = Proceeder(this.players.list.beginNode);
-        List<void Function()> playersUpadateFuncs = proceeder.proceed(nodeFunc, nodeGetNext, List<void Function()>());
+        List<void Function()> playersUpadateFuncs = this.players.getPlaying().map((Player player) {return player.update;}).toList();
 
         return playersUpadateFuncs;
     }
@@ -709,7 +776,7 @@ class Game {
 
                 return responseMessage;
             } else if (title == 'addPlayer') {
-                Player player = Player(playerId);
+                Player player = Player(playerId, message['name'], this);
                 this.players.add(player);
 
                 Map<String, dynamic> responseMessage = {
@@ -718,29 +785,33 @@ class Game {
 
                 return responseMessage;
             } else if (title == 'startPlaying') {
-                Player player = this.players.get(playerId);
-                Tuple2<int, int> pos = this.findFreeBlock();
-                int x = pos.item1;
-                int y = pos.item2;
+                Player player = this.players.getById(playerId);
 
-                player.startPlaying(x, y, this.blockIsSnake, this.blockIsMaze);
+                player.startPlaying();
 
                 return {};
             } else if (title == 'endPlaying') {
-                Player player = this.players.get(playerId);
+                Player player = this.players.getById(playerId);
 
                 player.endPlaying();
 
                 return {};
             } else if (title == 'loop') {
                 Map<String, dynamic> responseMessage = {
-                    'players': this.players.toList(playerId),
+                    'players': this.players.toMap(playerId),
                 };
+
+                return responseMessage;
+            } else if (title == 'loopInfo') {
+                Player player = this.players.getById(playerId);
+
+                Map<String, dynamic> responseMessage = player.sendInfoMap();
+                player.resetSendInfo();
 
                 return responseMessage;
             } else if (title == 'spectate') {
                 Map<String, dynamic> responseMessage = {
-                    'players': this.players.toList(null),
+                    'players': this.players.toMap(null),
                 };
 
                 return responseMessage;
@@ -748,16 +819,18 @@ class Game {
                 int newVelX = message['vel']['x'];
                 int newVelY = message['vel']['y'];
 
-                Player player = this.players.get(playerId);
+                Player player = this.players.getById(playerId);
 
-                player.snake.changeVel(newVelX, newVelY);
+                if (player.playing) {
+                    player.snake.changeVel(newVelX, newVelY);
+                }
 
                 Map<String, dynamic> responseMessage = {
                 };
 
                 return responseMessage;
             } else if (title == 'end') {
-                this.players.remove(playerId);
+                this.players.popById(playerId);
 
                 Map<String, dynamic> responseMessage = {
                 };
@@ -774,6 +847,7 @@ class Game {
     }
 }
 
+/* -------------------- main -------------------- */
 void test() {
     LinkedList<int> linkedList = LinkedList<int>();
 
@@ -807,7 +881,7 @@ Future main() async {
     // test();
 
     ServerSocket server = await ServerSocket.bind(
-        '192.168.1.3',
+        '192.168.1.6',
         4042,
     );
 
