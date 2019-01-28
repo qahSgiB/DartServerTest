@@ -8,32 +8,9 @@ from libs.Game.State import StateManager
 
 
 
-class SnakeEliminator():
-    def __init__(self, type, playerName=None):
-        self.type = type
-        self.playerName = playerName
-
-    def getMessage(self):
-        if self.type == 'maze':
-            return 'eliminated by wall'
-        elif self.type == 'snake':
-            return 'eliminated by {name}'.format(name=self.playerName)
-
-    def fromDict(snakeEliminatorDict):
-        type = snakeEliminatorDict['type']
-        if type == 'maze':
-            return SnakeEliminator(type)
-        elif type == 'snake':
-            return SnakeEliminator(type, snakeEliminatorDict['playerName'])
-
-class PlayerRemoteX():
-    def __init__(self, ifPlayer, ifRemote):
-        self.ifPlayer = ifPlayer
-        self.ifRemote = ifRemote
-
-    def get(self, isPlayer):
-        return self.ifPlayer if isPlayer else self.ifRemote
-
+# -------------------- Style --------------------
+#
+#
 class Style():
     def __init__(self, draw):
         self.draw = draw
@@ -95,6 +72,41 @@ class Style():
 
             canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
 
+    def styleBoost1Draw(boost, game):
+        canvas = game.canvas
+        gameMap = game.gameSMap
+
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
+
+        x = boost.pos[0]*scaleX
+        y = boost.pos[1]*scaleY
+        xSize = scaleX
+        ySize = scaleY
+
+        color = '#00BBDD'
+
+        canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+
+    def styleBoost2Draw(boost, game):
+        canvas = game.canvas
+        gameMap = game.gameSMap
+
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
+
+        x = boost.pos[0]*scaleX
+        y = boost.pos[1]*scaleY
+        xSize = scaleX
+        ySize = scaleY
+
+        color = '#33CC00'
+
+        canvas.create_polygon(x, y+ySize/2, x+xSize/2, y+ySize, x+xSize, y+ySize/2, x+xSize/2, y, fill=color, outline=color)
+
+# -------------------- Snake --------------------
+#
+#
 class SnakeBlock():
     def __init__(self, pos, isHead):
         self.pos = pos.copy()
@@ -114,6 +126,27 @@ class Snake():
     def fromDict(snakeDict, isPlayer=False):
         return Snake([SnakeBlock.fromDict(blockDict) for blockDict in snakeDict['blocks']], snakeStyles[snakeDict['style']].get(isPlayer))
 
+class SnakeEliminator():
+    def __init__(self, type, playerName=None):
+        self.type = type
+        self.playerName = playerName
+
+    def getMessage(self):
+        if self.type == 'maze':
+            return 'eliminated by wall'
+        elif self.type == 'snake':
+            return 'eliminated by {name}'.format(name=self.playerName)
+
+    def fromDict(snakeEliminatorDict):
+        type = snakeEliminatorDict['type']
+        if type == 'maze':
+            return SnakeEliminator(type)
+        elif type == 'snake':
+            return SnakeEliminator(type, snakeEliminatorDict['playerName'])
+
+# -------------------- Player --------------------
+#
+#
 class Player():
     def __init__(self, id, name, playing, snake):
         self.id = id
@@ -131,6 +164,31 @@ class Player():
 
         return Player(playerDict['id'], playerDict['name'], playing, Snake.fromDict(playerDict['snake'], isPlayer) if playing else None)
 
+class PlayerRemoteX():
+    def __init__(self, ifPlayer, ifRemote):
+        self.ifPlayer = ifPlayer
+        self.ifRemote = ifRemote
+
+    def get(self, isPlayer):
+        return self.ifPlayer if isPlayer else self.ifRemote
+
+# -------------------- Boost --------------------
+#
+#
+class Boost():
+    def __init__(self, pos, style):
+        self.pos = pos.copy()
+        self.style = style
+
+    def draw(self, game):
+        self.style.draw(self, game)
+
+    def fromDict(boostDict):
+        return Boost([boostDict['x'], boostDict['y']], boostStyles[boostDict['style']])
+
+# -------------------- Map+Maze --------------------
+#
+#
 class MazeBlock():
     def __init__(self, pos):
         self.pos = pos.copy()
@@ -268,7 +326,9 @@ class Game():
     def gameSSpectatingStateOnLoop(self):
         self.canvas.delete('all')
 
-        playersDict = self.gameSGameClient.communicate('spectate', {})['players']
+        spectateDict = self.gameSGameClient.communicate('spectate', {})
+
+        playersDict = spectateDict['players']
         players = []
 
         for playerDict in playersDict:
@@ -277,6 +337,15 @@ class Game():
         for player in players:
             if player.playing:
                 player.draw(self)
+
+        boostsDict = spectateDict['boosts']
+        boosts = []
+
+        for boostDict in boostsDict:
+            boosts.append(Boost.fromDict(boostDict))
+
+        for boost in boosts:
+            boost.draw(self)
 
         self.gameSMap.maze.draw(self)
 
@@ -366,15 +435,26 @@ class Game():
         else:
             self.canvas.delete('all')
 
-            playersDict = self.gameSGameClient.communicate('loop', {})['players']
+            loopDict = self.gameSGameClient.communicate('loop', {})
+
+            playersDict = loopDict['players']
             players = []
 
             for playerDict in playersDict:
-                if playerDict['playing']:
-                    players.append(Player.fromDict(playerDict))
+                players.append(Player.fromDict(playerDict))
 
             for player in players:
-                player.draw(self)
+                if player.playing:
+                    player.draw(self)
+
+            boostsDict = loopDict['boosts']
+            boosts = []
+
+            for boostDict in boostsDict:
+                boosts.append(Boost.fromDict(boostDict))
+
+            for boost in boosts:
+                boost.draw(self)
 
             self.gameSMap.maze.draw(self)
 
@@ -423,15 +503,26 @@ class Game():
     def gameSDeadStateOnLoop(self):
         self.canvas.delete('all')
 
-        playersDict = self.gameSGameClient.communicate('spectate', {})['players']
+        spectateDict = self.gameSGameClient.communicate('spectate', {})
+
+        playersDict = spectateDict['players']
         players = []
 
         for playerDict in playersDict:
-            if playerDict['playing']:
-                players.append(Player.fromDict(playerDict))
+            players.append(Player.fromDict(playerDict))
 
         for player in players:
-            player.draw(self)
+            if player.playing:
+                player.draw(self)
+
+        boostsDict = spectateDict['boosts']
+        boosts = []
+
+        for boostDict in boostsDict:
+            boosts.append(Boost.fromDict(boostDict))
+
+        for boost in boosts:
+            boost.draw(self)
 
         self.gameSMap.maze.draw(self)
 
@@ -530,6 +621,10 @@ snakeStyles = {
 }
 mazeStyles = {
     'style1': Style(Style.styleMaze1Draw)
+}
+boostStyles = {
+    'style1': Style(Style.styleBoost1Draw),
+    'style2': Style(Style.styleBoost2Draw)
 }
 
 
