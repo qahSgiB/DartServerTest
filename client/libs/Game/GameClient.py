@@ -16,13 +16,15 @@ class SocketXList():
         self.list_.add(item)
 
 class GameClient():
-    def __init__(self, address, port, outputEnabled=False, baseDataLength=1024):
+    def __init__(self, address, port, outputEnabled=False, baseDataLength=1024, baseDataLengthMaxMultiplayerDigits=2):
         self.address = address
         self.port = port
         self.id = None
 
         self.outputEnabled = outputEnabled
+
         self.baseDataLength = baseDataLength
+        self.baseDataLengthMaxMultiplayerDigits = baseDataLengthMaxMultiplayerDigits
 
         self.socket = socket.socket()
 
@@ -60,8 +62,8 @@ class GameClient():
 
         data = str(data.decode('utf-8'))
 
-        dataMult = int(data[0])
-        data = data[1:]
+        dataMult = int(data[0:self.baseDataLengthMaxMultiplayerDigits])
+        data = data[self.baseDataLengthMaxMultiplayerDigits:]
 
         for i in range(dataMult-1):
             newData = self.socket.recv(self.baseDataLength)

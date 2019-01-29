@@ -217,11 +217,15 @@ class GameClient {
     String address;
     int port;
     int id;
-    bool outputEnabled;
-    Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage;
-    int baseDataLength;
 
-    GameClient(Socket client, int id, Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage, {bool outputEnabled=false, int baseDataLength=1024}) {
+    bool outputEnabled;
+
+    Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage;
+
+    int baseDataLength;
+	int baseDataLengthMaxMultiplayerDigits;
+
+    GameClient(Socket client, int id, Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage, {bool outputEnabled=false, int baseDataLength=1024, this.baseDataLengthMaxMultiplayerDigits=2}) {
         this.client = client;
         this.address = this.client.remoteAddress.address;
         this.port = this.client.remotePort;
@@ -278,9 +282,15 @@ class GameClient {
             dataMult += 1;
         }
 
-        data = '${dataMult}'+data;
+		String dataMultString = dataMult.toString().padLeft(this.baseDataLengthMaxMultiplayerDigits, '0');
 
-        this.client.write(data);
+		if (dataMultString.length <= this.baseDataLengthMaxMultiplayerDigits) {
+			data = '${dataMultString}'+data;
+
+	        this.client.write(data);
+		} else {
+			this.output('Message sending failed (Too long message)');
+		}
     }
 
     void begin(Map<String, dynamic> message) {
@@ -335,6 +345,7 @@ class Player {
     Snake snake;
     bool playing;
     Map<String, dynamic> sendInfo;
+
     Game game;
 
     Player(this.id, this.name, this.game) {
@@ -931,9 +942,23 @@ class Game {
             } else if (title == 'startPlaying') {
                 Player player = this.players.getById(playerId);
 
-                player.startPlaying();
+				Map<String, dynamic> responseMessage = {
+					'error': {
+					},
+				};
 
-                return {};
+				if (this.players.getPlaying().getLength() >= 2) {
+					Map<String, dynamic> errorMessage = {
+						'title': 'GameFull',
+					};
+					responseMessage['error'] = errorMessage;
+
+					return responseMessage;
+				} else {
+					player.startPlaying();
+
+	                return responseMessage;
+				}
             } else if (title == 'endPlaying') {
                 Player player = this.players.getById(playerId);
 
@@ -1031,5 +1056,5 @@ Future main() async {
         4042,
     );
 
-    Game(server, 25, 25);
+    Game(server, 30, 30);
 }

@@ -298,6 +298,8 @@ class Game():
 
         self.gameSEliminator = None
 
+        self.gameSErrorMessage = ''
+
         self.gameSStateManager.setState('game.spectating')
 
     def gameStateOnLoop(self):
@@ -369,7 +371,12 @@ class Game():
             for player in remotePlayers:
                 playersText.append(createPlayerText(player))
 
-        self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), ['spectating', 'your name is {name}'.format(name=self.playerName)], 8)
+        mainTexts = ['spectating', 'your name is {name}'.format(name=self.playerName)]
+
+        if self.gameSErrorMessage != '':
+            mainTexts.append(self.gameSErrorMessage)
+
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), mainTexts, 8)
         self.createTexts(screenSizeX*(1/2), screenSizeY*(2/3), ['press <space> to start playing', 'press <q> to return back to menu'], 8)
         self.createTexts(screenSizeX*(1/2), screenSizeY*(5/6), playersText, 8)
 
@@ -406,21 +413,21 @@ class Game():
             changeXYMessage = self.gameSGameClient.communicate('changeVel', message)
 
     def gameSPlayingStateOnStart(self):
+        self.gameSErrorMessage = ''
+        
         startPlayingMessage = self.gameSGameClient.communicate('startPlaying', {})
 
-        error = {}# addPlayerMessage['error']
+        error = startPlayingMessage['error']
 
         if len(error) != 0:
             if error['title'] == 'GameFull':
                 errorMessage = 'game server is full try again later'
             else:
-                errorMessage = 'Unknown error occured'
+                errorMessage = 'unknown error occured'
 
-            self.error = {
-                'message': errorMessage
-            }
+            self.gameSErrorMessage = errorMessage
 
-            self.stateManager.setState('main')
+            self.gameSStateManager.setState('game.spectating')
         else:
             self.gamePlayingSEliminationResetAfter = None
             self.gamePlayingSEliminationId = None
