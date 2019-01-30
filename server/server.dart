@@ -287,7 +287,7 @@ class GameClient {
 		if (dataMultString.length <= this.baseDataLengthMaxMultiplayerDigits) {
 			data = '${dataMultString}'+data;
 
-	        this.client.write(data);
+	        this.client.add(utf8.encode(data));
 		} else {
 			this.output('Message sending failed (Too long message)');
 		}

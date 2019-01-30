@@ -414,7 +414,7 @@ class Game():
 
     def gameSPlayingStateOnStart(self):
         self.gameSErrorMessage = ''
-        
+
         startPlayingMessage = self.gameSGameClient.communicate('startPlaying', {})
 
         error = startPlayingMessage['error']
@@ -639,7 +639,7 @@ boostStyles = {
 def main():
     import os
 
-    serverAddress = '192.168.1.6'
+    serverAddress = '207.154.217.210'
     serverPort = 4042
 
     playerName = os.getlogin()

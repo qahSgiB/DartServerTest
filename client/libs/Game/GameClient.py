@@ -1,4 +1,5 @@
 import socket
+import time
 
 from libs.DataStructures.LinkedList import LinkedList
 from libs.Encoding import JSONEncoding
@@ -66,6 +67,8 @@ class GameClient():
         data = data[self.baseDataLengthMaxMultiplayerDigits:]
 
         for i in range(dataMult-1):
+            time.sleep(0.002)
+
             newData = self.socket.recv(self.baseDataLength)
             newData = str(newData.decode('utf-8'))
             data += newData
