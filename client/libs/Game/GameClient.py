@@ -17,7 +17,7 @@ class SocketXList():
         self.list_.add(item)
 
 class GameClient():
-    def __init__(self, address, port, outputEnabled=False, baseDataLength=1024, baseDataLengthMaxMultiplayerDigits=2):
+    def __init__(self, address, port, outputEnabled=False, baseDataLength=1024, baseDataLengthMaxMultiplayerDigits=3):
         self.address = address
         self.port = port
         self.id = None

@@ -12,10 +12,17 @@ from libs.Game.State import StateManager
 #
 #
 class Style():
-    def __init__(self, draw):
-        self.draw = draw
+    def __init__(self, details):
+        self.details = details
 
-    def styleSnakePlayer1Draw(snake, game):
+    def draw(obj, game):
+        pass
+
+    def fromDict(styleDict, styleType):
+        return styles[styleType][styleDict['name']](styleDict['details'])
+
+class StyleSnakeDefaultPlayer(Style):
+    def draw(self, snake, game):
         canvas = game.canvas
         gameMap = game.gameSMap
 
@@ -35,44 +42,156 @@ class Style():
 
             canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
 
-    def styleSnakeRemote1Draw(snake, game):
+class StyleSnakeDefaultRemote(Style):
+    def draw(self, snake, game):
         canvas = game.canvas
         gameMap = game.gameSMap
 
         scaleX = gameMap.scale[0]
         scaleY = gameMap.scale[1]
 
+        def blockToNBlock(baseBlock, block):
+            xDist = block[0]-baseBlock[0]
+            yDist = block[1]-baseBlock[1]
+            xDistN = xDist/abs(xDist) if xDist != 0 else 0
+            yDistN = yDist/abs(yDist) if yDist != 0 else 0
+
+            return [xDistN, yDistN]
+
+        blocks = snake.blocks
+        for blockIndex in range(len(blocks)):
+            block = blocks[blockIndex]
+
+            if block.isHead:
+                x = block.pos[0]*scaleX
+                y = block.pos[1]*scaleY
+                xSize = scaleX
+                ySize = scaleY
+
+                color = '#FF0000'
+
+                canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+
+            else:
+                nBlocks = {
+                    (0, 1): True,
+                    (0, -1): True,
+                    (1, 0): True,
+                    (-1, 0): True,
+                }
+
+                if blockIndex > 0:
+                    nBlocks[tuple(blockToNBlock(block.pos, blocks[blockIndex-1].pos))] = False
+                if blockIndex < len(blocks)-1:
+                    nBlocks[tuple(blockToNBlock(block.pos, blocks[blockIndex+1].pos))] = False
+
+                blockX = block.pos[0]
+                blockY = block.pos[1]
+
+                for nBlock in nBlocks.keys():
+                    if nBlocks[nBlock]:
+                        nBlockX = nBlock[0]
+                        nBlockY = nBlock[1]
+
+                        x0 = None
+                        x1 = None
+                        if nBlockX == 0:
+                            x0 = blockX
+                            x1 = blockX+1
+                        else:
+                            if nBlockX < 0:
+                                x0 = blockX
+                                x1 = blockX
+                            elif nBlockX > 0:
+                                x0 = blockX+1
+                                x1 = blockX+1
+
+                        y0 = None
+                        y1 = None
+                        if nBlockY == 0:
+                            y0 = blockY
+                            y1 = blockY+1
+                        else:
+                            if nBlockY < 0:
+                                y0 = blockY
+                                y1 = blockY
+                            elif nBlockY > 0:
+                                y0 = blockY+1
+                                y1 = blockY+1
+
+                        canvas.create_line(x0*scaleX, y0*scaleY, x1*scaleX, y1*scaleY, fill='#000000')
+
+class StyleSnakeRainbowPlayer(Style):
+    def draw(self, snake, game):
+        canvas = game.canvas
+        gameMap = game.gameSMap
+
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
+
+        colors = ['#9400D3', '#4B0082', '#0000FF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000']
+        colorPhase = self.details['phase']
+
+        colorIndex = colorPhase
         for block in snake.blocks:
             x = block.pos[0]*scaleX
             y = block.pos[1]*scaleY
             xSize = scaleX
             ySize = scaleY
 
-            if block.isHead:
-                color = '#996666'
-            else:
-                color = '#666666'
+            color = colors[colorIndex]
 
             canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
 
-    def styleMaze1Draw(maze, game):
+            colorIndex -= 1
+            if colorIndex < 0:
+                colorIndex = len(colors)-1
+
+class StyleSnakeRainbowRemote(Style):
+    def draw(self, snake, game):
         canvas = game.canvas
         gameMap = game.gameSMap
 
         scaleX = gameMap.scale[0]
         scaleY = gameMap.scale[1]
 
-        for block in maze.blocks:
-            x = block.pos[0]*scaleX
-            y = block.pos[1]*scaleY
-            xSize = scaleX
-            ySize = scaleY
+        colors = ['#9400D3', '#4B0082', '#0000FF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000']
+        colorPhase = self.details['phase']
 
-            color = '#0000FF'
+        colorIndex = colorPhase
+        for block in snake.blocks:
+            x = (block.pos[0]+0.2)*scaleX
+            y = (block.pos[1]+0.2)*scaleY
+            xSize = scaleX*0.6
+            ySize = scaleY*0.6
+
+            color = colors[colorIndex]
 
             canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
 
-    def styleBoost1Draw(boost, game):
+            colorIndex -= 1
+            if colorIndex < 0:
+                colorIndex = len(colors)-1
+
+class StyleMazeDefault(Style):
+    def draw(self, block, game):
+        canvas = game.canvas
+        gameMap = game.gameSMap
+
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
+
+        x = block.pos[0]*scaleX
+        y = block.pos[1]*scaleY
+        xSize = scaleX
+        ySize = scaleY
+
+        color = '#0000FF'
+
+        canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+
+class StyleBoostFood(Style):
+    def draw(self, boost, game):
         canvas = game.canvas
         gameMap = game.gameSMap
 
@@ -88,7 +207,8 @@ class Style():
 
         canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
 
-    def styleBoost2Draw(boost, game):
+class StyleBoostLgbt(Style):
+    def draw(self, boost, game):
         canvas = game.canvas
         gameMap = game.gameSMap
 
@@ -100,9 +220,26 @@ class Style():
         xSize = scaleX
         ySize = scaleY
 
-        color = '#33CC00'
+        canvas.create_text(x+xSize*(1/2), y+ySize*(1/3), text='NOT', font=('Purisa', int(ySize/3)))
+        canvas.create_text(x+xSize*(1/2), y+ySize*(2/3), text='GOOD', font=('Purisa', int(ySize/3)), angle=180)
 
-        canvas.create_polygon(x, y+ySize/2, x+xSize/2, y+ySize, x+xSize, y+ySize/2, x+xSize/2, y, fill=color, outline=color)
+styles = {
+    'snakePlayer': {
+        'default': StyleSnakeDefaultPlayer,
+        'rainbow': StyleSnakeRainbowPlayer,
+    },
+    'snakeRemote': {
+        'default': StyleSnakeDefaultRemote,
+        'rainbow': StyleSnakeRainbowRemote,
+    },
+    'maze': {
+        'default': StyleMazeDefault,
+    },
+    'boost': {
+        'food': StyleBoostFood,
+        'lgbt': StyleBoostLgbt,
+    },
+}
 
 # -------------------- Snake --------------------
 #
@@ -124,7 +261,12 @@ class Snake():
         self.style.draw(self, game)
 
     def fromDict(snakeDict, isPlayer=False):
-        return Snake([SnakeBlock.fromDict(blockDict) for blockDict in snakeDict['blocks']], snakeStyles[snakeDict['style']].get(isPlayer))
+        blocks = [SnakeBlock.fromDict(blockDict) for blockDict in snakeDict['blocks']]
+
+        styleDict = snakeDict['style']
+        style = Style.fromDict(styleDict, 'snakePlayer' if isPlayer else 'snakeRemote')
+
+        return Snake(blocks, style)
 
 class SnakeEliminator():
     def __init__(self, type, playerName=None):
@@ -164,14 +306,6 @@ class Player():
 
         return Player(playerDict['id'], playerDict['name'], playing, Snake.fromDict(playerDict['snake'], isPlayer) if playing else None)
 
-class PlayerRemoteX():
-    def __init__(self, ifPlayer, ifRemote):
-        self.ifPlayer = ifPlayer
-        self.ifRemote = ifRemote
-
-    def get(self, isPlayer):
-        return self.ifPlayer if isPlayer else self.ifRemote
-
 # -------------------- Boost --------------------
 #
 #
@@ -184,17 +318,27 @@ class Boost():
         self.style.draw(self, game)
 
     def fromDict(boostDict):
-        return Boost([boostDict['x'], boostDict['y']], boostStyles[boostDict['style']])
+        styleDict = boostDict['style']
+        style = Style.fromDict(styleDict, 'boost')
+
+        return Boost([boostDict['x'], boostDict['y']], style)
 
 # -------------------- Map+Maze --------------------
 #
 #
 class MazeBlock():
-    def __init__(self, pos):
+    def __init__(self, pos, style):
         self.pos = pos.copy()
+        self.style = style
+
+    def draw(self, game):
+        self.style.draw(self, game)
 
     def fromDict(mazeBlockDict):
-        return MazeBlock([mazeBlockDict['x'], mazeBlockDict['y']])
+        styleDict = mazeBlockDict['style']
+        style = Style.fromDict(styleDict, 'maze')
+
+        return MazeBlock([mazeBlockDict['x'], mazeBlockDict['y']], style)
 
 class Maze():
     def __init__(self, blocks):
@@ -209,7 +353,8 @@ class Maze():
         return Maze(blocks)
 
     def draw(self, game):
-        mazeStyles['style1'].draw(self, game)
+        for block in self.blocks:
+            block.draw(game)
 
 class GameMap():
     def __init__(self, size, scale, maze):
@@ -623,23 +768,11 @@ class Game():
 
 
 
-snakeStyles = {
-    'style1': PlayerRemoteX(Style(Style.styleSnakePlayer1Draw), Style(Style.styleSnakeRemote1Draw))
-}
-mazeStyles = {
-    'style1': Style(Style.styleMaze1Draw)
-}
-boostStyles = {
-    'style1': Style(Style.styleBoost1Draw),
-    'style2': Style(Style.styleBoost2Draw)
-}
-
-
-
 def main():
     import os
 
-    serverAddress = '207.154.217.210'
+    # serverAddress = '207.154.217.210'
+    serverAddress = '192.168.1.4'
     serverPort = 4042
 
     playerName = os.getlogin()

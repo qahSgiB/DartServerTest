@@ -225,7 +225,7 @@ class GameClient {
     int baseDataLength;
 	int baseDataLengthMaxMultiplayerDigits;
 
-    GameClient(Socket client, int id, Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage, {bool outputEnabled=false, int baseDataLength=1024, this.baseDataLengthMaxMultiplayerDigits=2}) {
+    GameClient(Socket client, int id, Map<String, dynamic> Function(String, Map<String, dynamic>) onMessage, {bool outputEnabled=false, int baseDataLength=1024, this.baseDataLengthMaxMultiplayerDigits=3}) {
         this.client = client;
         this.address = this.client.remoteAddress.address;
         this.port = this.client.remotePort;
@@ -440,6 +440,87 @@ class PlayerList extends LinkedList<Player> {
     }
 }
 
+/* -------------------- Style --------------------
+ *
+ */
+
+class Style {
+	String name;
+
+	Style() {
+		this.name = '';
+	}
+
+	void update() {
+	}
+
+	Map<String, dynamic> getDetailsMap() {
+		Map<String, dynamic> details = {
+		};
+
+		return details;
+	}
+
+	Map<String, dynamic> toMap() {
+		Map<String, dynamic> data = {
+			'name': this.name,
+			'details': this.getDetailsMap(),
+		};
+
+		return data;
+	}
+}
+
+class StyleSnakeDefault extends Style {
+	StyleSnakeDefault() {
+		this.name = 'default';
+	}
+}
+
+class StyleSnakeRainbow extends Style {
+	int phase;
+
+	StyleSnakeRainbow() {
+		this.name = 'rainbow';
+
+		this.phase = 0;
+	}
+
+	void update() {
+		this.phase += 1;
+
+		if (this.phase >= 7) {
+			this.phase = 0;
+		}
+	}
+
+	Map<String, dynamic> getDetailsMap() {
+		Map<String, dynamic> details = {
+			'phase': this.phase,
+		};
+
+		return details;
+	}
+}
+
+class StyleBoostFood extends Style {
+	StyleBoostFood() {
+		this.name = 'food';
+	}
+}
+
+class StyleBoostLgbt extends Style {
+	StyleBoostLgbt() {
+		this.name = 'lgbt';
+	}
+}
+
+class StyleMazeDefault extends Style {
+	StyleMazeDefault() {
+		this.name = 'default';
+	}
+}
+
 /* -------------------- Snake --------------------
  *
  */
@@ -459,10 +540,6 @@ class SnakeBlock {
 
         return data;
     }
-}
-
-enum SnakeStyle {
-    style1,
 }
 
 class SnakeEliminator {
@@ -490,7 +567,8 @@ class Snake {
     int velY;
     bool velChanged;
 
-    SnakeStyle style;
+    Style defaultStyle;
+	LinkedList<BoostPostEffect> boostPostEffectsStack;
 
     Player player;
 
@@ -498,11 +576,13 @@ class Snake {
         this.blocks = LinkedList<SnakeBlock>();
         this.blocks.addToBegin(SnakeBlock(x, y, true));
         this.length = 5;
+
         this.velX = 1;
         this.velY = 0;
         this.velChanged = false;
 
-        this.style = SnakeStyle.style1;
+        this.defaultStyle = StyleSnakeDefault();
+		this.boostPostEffectsStack = LinkedList<BoostPostEffect>();
     }
 
     void update() {
@@ -526,6 +606,10 @@ class Snake {
 			Boost boost = this.player.game.blockGetBoost(newX, newY);
 			if (boost != null) {
 				boost.eat(this);
+
+				if (boost.boostType.boosPostEffectFactory != null) {
+					this.boostPostEffectsStack.addToBegin(boost.boostType.boosPostEffectFactory(this));
+				}
 			}
 
             pos.isHead = false;
@@ -536,6 +620,18 @@ class Snake {
             if (this.blocks.getLength() > this.length) {
                 this.blocks.popFromEnd();
             }
+
+			LinkedList<BoostPostEffect> newBoostPostEffectsStack = LinkedList<BoostPostEffect>();
+			for (BoostPostEffect boostPostEffect in this.boostPostEffectsStack) {
+				if (!boostPostEffect.end()) {
+					boostPostEffect.update();
+					newBoostPostEffectsStack.addToEnd(boostPostEffect);
+				}
+			}
+
+			this.boostPostEffectsStack = newBoostPostEffectsStack;
+
+			this.getActiveStyle().update();
 
             this.velChanged = false;
         }
@@ -562,12 +658,30 @@ class Snake {
         return isBlock;
     }
 
+	Style getActiveStyle() {
+		Style style = null;
+
+		for (BoostPostEffect boostPostEffect in this.boostPostEffectsStack) {
+			if (boostPostEffect.style != null) {
+				style = boostPostEffect.style;
+
+				break;
+			}
+		}
+
+		if (style == null) {
+			style = this.defaultStyle;
+		}
+
+		return style;
+	}
+
     Map<String, dynamic> toMap() {
         List<Map<String, dynamic>> blocksMap = this.blocks.map<Map<String, dynamic>>((SnakeBlock block) {return block.toMap();}).toList();
 
         Map<String, dynamic> data = {
             'blocks': blocksMap,
-            'style': this.style.toString().split('.').last,
+            'style': this.getActiveStyle().toMap(),
         };
 
         return data;
@@ -681,19 +795,15 @@ class BoostGroup {
 	}
 }
 
-enum BoostStyle {
-	style1,
-	style2,
-}
-
 class BoostType {
-	BoostStyle style;
+	Style Function() styleFactory;
+	BoostPostEffect Function(Snake)  boosPostEffectFactory;
 
 	void Function(Snake) onEat;
 	int lifetime;
 	bool limitedLifetime;
 
-	BoostType(this.style, this.onEat, this.lifetime) {
+	BoostType(this.styleFactory, this.onEat, this.lifetime, [this.boosPostEffectFactory=null]) {
 		this.limitedLifetime = this.lifetime != null;
 	}
 }
@@ -703,8 +813,9 @@ class Boost {
 	int y;
 
 	BoostType boostType;
-
 	int lifetime;
+
+	Style style;
 
 	Boost(this.x, this.y, this.boostType) {
 		if (this.boostType.limitedLifetime) {
@@ -712,12 +823,16 @@ class Boost {
 		} else {
 			this.lifetime = 1;
 		}
+
+		this.style = this.boostType.styleFactory();
 	}
 
 	void update() {
 		if (this.boostType.limitedLifetime) {
 			this.lifetime--;
 		}
+
+		this.style.update();
 	}
 
 	void eat(Snake snake) {
@@ -727,12 +842,52 @@ class Boost {
 
 	Map<String, dynamic> toMap() {
 		Map<String, dynamic> data = {
-			'style': this.boostType.style.toString().split('.').last,
+			'style': this.style.toMap(),
 			'x': this.x,
 			'y': this.y,
 		};
 
 		return data;
+	}
+}
+
+/* -------------------- BoostPostEffect --------------------
+ *
+ */
+
+class BoostPostEffect {
+	Style style;
+
+	BoostPostEffect(Snake snake) {
+	}
+
+	void update() {
+		if (this.style != null) {
+			this.style.update();
+		}
+	}
+
+	bool end() {
+		return true;
+	}
+}
+
+class BoostPostEffectLgbt extends BoostPostEffect {
+	int lifetime;
+
+	BoostPostEffectLgbt(Snake snake):super(snake) {
+		this.style = StyleSnakeRainbow();
+		this.lifetime = 15;
+	}
+
+	void update() {
+		super.update();
+
+		this.lifetime--;
+	}
+
+	bool end() {
+		return this.lifetime <= 0;
 	}
 }
 
@@ -743,10 +898,15 @@ class MazeBlock {
     int x;
     int y;
 
-    MazeBlock(this.x, this.y);
+	Style style;
+
+	MazeBlock(this.x, this.y) {
+		this.style = StyleMazeDefault();
+	}
 
     Map<String, dynamic> toMap() {
         Map<String, dynamic> data = {
+			'style': this.style.toMap(),
             'x': x,
             'y': y,
         };
@@ -841,6 +1001,7 @@ class Game {
     int nextPlayerId;
 
     GameMap gameMap;
+
 	BoostManager boostManager;
 
     Mainloop playersUpdateMainloop;
@@ -852,10 +1013,10 @@ class Game {
 		LinkedList<BoostGroup> boostGroups = LinkedList<BoostGroup>();
 
 		BoostGroup boostGroup1 = BoostGroup(10, 10, 1);
-		boostGroup1.addBoostType(BoostType(BoostStyle.style1, (Snake snake) {snake.length++;}, null));
+		boostGroup1.addBoostType(BoostType(() {return StyleBoostFood();}, (Snake snake) {snake.length++;}, null));
 
-		BoostGroup boostGroup2 = BoostGroup(1, 500, 2);
-		boostGroup2.addBoostType(BoostType(BoostStyle.style2, (Snake snake) {snake.length+=3;}, 25));
+		BoostGroup boostGroup2 = BoostGroup(100, 100, 1);
+		boostGroup2.addBoostType(BoostType(() {return StyleBoostLgbt();}, (Snake snake) {snake.length+=3;}, 50, (Snake snake) {return BoostPostEffectLgbt(snake);}));
 
 		boostGroups.add(boostGroup1);
 		boostGroups.add(boostGroup2);
@@ -865,7 +1026,7 @@ class Game {
         this.players = PlayerList();
         this.nextPlayerId = 0;
 
-        this.playersUpdateMainloop = Mainloop(Duration(milliseconds: 200), this.getUpdateFuncs);
+        this.playersUpdateMainloop = Mainloop(Duration(milliseconds: 100), this.getUpdateFuncs);
         this.playersUpdateMainloop.start();
 
         this.server.listen(this.newClient);
@@ -906,7 +1067,7 @@ class Game {
         return Tuple2<int, int>(x, y);
     }
 
-    List<void Function()> getUpdateFuncs() {
+	List<void Function()> getUpdateFuncs() {
 		List<void Function()> playersUpdateFunc = this.players.getPlaying().map((Player player) {return player.update;}).toList();
 
 		List<void Function()> updateFuncs = List<void Function()>();
@@ -1052,7 +1213,7 @@ Future main() async {
     // test();
 
     ServerSocket server = await ServerSocket.bind(
-        '192.168.1.6',
+        '192.168.1.4',
         4042,
     );
 
