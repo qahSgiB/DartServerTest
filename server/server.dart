@@ -387,6 +387,8 @@ class Player {
     }
 
     void eliminate(Player player) {
+		this.snake.score += 3;
+
         this.sendInfo['elimination'] = true;
 
         Map<String, dynamic> eliminationMap = {
@@ -503,6 +505,12 @@ class StyleSnakeRainbow extends Style {
 	}
 }
 
+class StyleSnakePewdiepie extends Style {
+	StyleSnakePewdiepie() {
+		this.name = 'pewdiepie';
+	}
+}
+
 class StyleBoostFood extends Style {
 	StyleBoostFood() {
 		this.name = 'food';
@@ -512,6 +520,12 @@ class StyleBoostFood extends Style {
 class StyleBoostLgbt extends Style {
 	StyleBoostLgbt() {
 		this.name = 'lgbt';
+	}
+}
+
+class StyleBoostPewdiepie extends Style {
+	StyleBoostPewdiepie() {
+		this.name = 'pewdiepie';
 	}
 }
 
@@ -567,6 +581,8 @@ class Snake {
     int velY;
     bool velChanged;
 
+	int score;
+
     Style defaultStyle;
 	LinkedList<BoostPostEffect> boostPostEffectsStack;
 
@@ -581,18 +597,20 @@ class Snake {
         this.velY = 0;
         this.velChanged = false;
 
+		this.score = 0;
+
         this.defaultStyle = StyleSnakeDefault();
 		this.boostPostEffectsStack = LinkedList<BoostPostEffect>();
     }
 
-    void update() {
+	void update() {
         SnakeBlock pos = this.blocks[0];
         int newX = pos.x+this.velX;
         int newY = pos.y+this.velY;
 
         if (this.player.game.blockIsSnake(newX, newY)) {
             Player eliminator;
-            for (Player player in  this.player.game.players.getPlaying()) {
+            for (Player player in this.player.game.players.getPlaying()) {
                 if (player.snake.isBlock(newX, newY)) {
                     eliminator = player;
                 }
@@ -608,7 +626,7 @@ class Snake {
 				boost.eat(this);
 
 				if (boost.boostType.boosPostEffectFactory != null) {
-					this.boostPostEffectsStack.addToBegin(boost.boostType.boosPostEffectFactory(this));
+					this.boostPostEffectsStack.addToBegin(boost.boostType.boosPostEffectFactory());
 				}
 			}
 
@@ -676,12 +694,24 @@ class Snake {
 		return style;
 	}
 
+	BoostPostEffect getActiveBoost() {
+		if (this.boostPostEffectsStack.getLength() > 0) {
+			return this.boostPostEffectsStack.get(0);
+		} else {
+			return null;
+		}
+	}
+
     Map<String, dynamic> toMap() {
         List<Map<String, dynamic>> blocksMap = this.blocks.map<Map<String, dynamic>>((SnakeBlock block) {return block.toMap();}).toList();
+
+		BoostPostEffect activeBoost = this.getActiveBoost();
 
         Map<String, dynamic> data = {
             'blocks': blocksMap,
             'style': this.getActiveStyle().toMap(),
+			'score': this.score,
+			'activeBoostName': (activeBoost != null) ? activeBoost.name : '',
         };
 
         return data;
@@ -797,7 +827,7 @@ class BoostGroup {
 
 class BoostType {
 	Style Function() styleFactory;
-	BoostPostEffect Function(Snake)  boosPostEffectFactory;
+	BoostPostEffect Function()  boosPostEffectFactory;
 
 	void Function(Snake) onEat;
 	int lifetime;
@@ -857,8 +887,10 @@ class Boost {
 
 class BoostPostEffect {
 	Style style;
+	String name;
 
-	BoostPostEffect(Snake snake) {
+	BoostPostEffect() {
+		this.name = '';
 	}
 
 	void update() {
@@ -875,9 +907,32 @@ class BoostPostEffect {
 class BoostPostEffectLgbt extends BoostPostEffect {
 	int lifetime;
 
-	BoostPostEffectLgbt(Snake snake):super(snake) {
+	BoostPostEffectLgbt() {
 		this.style = StyleSnakeRainbow();
 		this.lifetime = 15;
+
+		this.name = 'lgbt';
+	}
+
+	void update() {
+		super.update();
+
+		this.lifetime--;
+	}
+
+	bool end() {
+		return this.lifetime <= 0;
+	}
+}
+
+class BoostPostEffectPewdiepie extends BoostPostEffect {
+	int lifetime;
+
+	BoostPostEffectPewdiepie() {
+		this.style = StyleSnakePewdiepie();
+		this.lifetime = 15;
+
+		this.name = 'pewdiepie';
 	}
 
 	void update() {
@@ -1015,11 +1070,15 @@ class Game {
 		BoostGroup boostGroup1 = BoostGroup(10, 10, 1);
 		boostGroup1.addBoostType(BoostType(() {return StyleBoostFood();}, (Snake snake) {snake.length++;}, null));
 
-		BoostGroup boostGroup2 = BoostGroup(100, 100, 1);
-		boostGroup2.addBoostType(BoostType(() {return StyleBoostLgbt();}, (Snake snake) {snake.length+=3;}, 50, (Snake snake) {return BoostPostEffectLgbt(snake);}));
+		// BoostGroup boostGroup2 = BoostGroup(1, 100, 1);
+		// boostGroup2.addBoostType(BoostType(() {return StyleBoostLgbt();}, (Snake snake) {snake.length+=3;}, 50, () {return BoostPostEffectLgbt(snake);}));
+
+		BoostGroup boostGroup3 = BoostGroup(10, 10, 1);
+		boostGroup3.addBoostType(BoostType(() {return StyleBoostPewdiepie();}, (Snake snake) {snake.score++;}, null, () {return BoostPostEffectPewdiepie();}));
 
 		boostGroups.add(boostGroup1);
-		boostGroups.add(boostGroup2);
+		// boostGroups.add(boostGroup2);
+		boostGroups.add(boostGroup3);
 
 		this.boostManager = BoostManager(boostGroups, this);
 

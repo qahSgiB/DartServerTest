@@ -5,6 +5,7 @@ import random
 from libs.Game.GameClient import GameClient
 from libs.Game.Mainloop import Mainloop
 from libs.Game.State import StateManager
+from libs.Youtube import YoutubeChannel
 
 
 
@@ -121,6 +122,103 @@ class StyleSnakeDefaultRemote(Style):
 
                         canvas.create_line(x0*scaleX, y0*scaleY, x1*scaleX, y1*scaleY, fill='#000000')
 
+class StyleSnakePewdiepiePlayer(Style):
+    def draw(self, snake, game):
+        canvas = game.canvas
+        gameMap = game.gameSMap
+
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
+
+        for block in snake.blocks:
+            x = block.pos[0]*scaleX
+            y = block.pos[1]*scaleY
+            xSize = scaleX
+            ySize = scaleY
+
+            color = '#FF0000'
+
+            canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+
+class StyleSnakePewdiepieRemote(Style):
+    def draw(self, snake, game):
+        canvas = game.canvas
+        gameMap = game.gameSMap
+
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
+
+        def blockToNBlock(baseBlock, block):
+            xDist = block[0]-baseBlock[0]
+            yDist = block[1]-baseBlock[1]
+            xDistN = xDist/abs(xDist) if xDist != 0 else 0
+            yDistN = yDist/abs(yDist) if yDist != 0 else 0
+
+            return [xDistN, yDistN]
+
+        blocks = snake.blocks
+        for blockIndex in range(len(blocks)):
+            block = blocks[blockIndex]
+
+            if block.isHead:
+                x = block.pos[0]*scaleX
+                y = block.pos[1]*scaleY
+                xSize = scaleX
+                ySize = scaleY
+
+                color = '#FF0000'
+
+                canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+
+            else:
+                nBlocks = {
+                    (0, 1): True,
+                    (0, -1): True,
+                    (1, 0): True,
+                    (-1, 0): True,
+                }
+
+                if blockIndex > 0:
+                    nBlocks[tuple(blockToNBlock(block.pos, blocks[blockIndex-1].pos))] = False
+                if blockIndex < len(blocks)-1:
+                    nBlocks[tuple(blockToNBlock(block.pos, blocks[blockIndex+1].pos))] = False
+
+                blockX = block.pos[0]
+                blockY = block.pos[1]
+
+                for nBlock in nBlocks.keys():
+                    if nBlocks[nBlock]:
+                        nBlockX = nBlock[0]
+                        nBlockY = nBlock[1]
+
+                        x0 = None
+                        x1 = None
+                        if nBlockX == 0:
+                            x0 = blockX
+                            x1 = blockX+1
+                        else:
+                            if nBlockX < 0:
+                                x0 = blockX
+                                x1 = blockX
+                            elif nBlockX > 0:
+                                x0 = blockX+1
+                                x1 = blockX+1
+
+                        y0 = None
+                        y1 = None
+                        if nBlockY == 0:
+                            y0 = blockY
+                            y1 = blockY+1
+                        else:
+                            if nBlockY < 0:
+                                y0 = blockY
+                                y1 = blockY
+                            elif nBlockY > 0:
+                                y0 = blockY+1
+                                y1 = blockY+1
+
+                        canvas.create_line(x0*scaleX, y0*scaleY, x1*scaleX, y1*scaleY, fill='#FF0000')
+
 class StyleSnakeRainbowPlayer(Style):
     def draw(self, snake, game):
         canvas = game.canvas
@@ -223,14 +321,33 @@ class StyleBoostLgbt(Style):
         canvas.create_text(x+xSize*(1/2), y+ySize*(1/3), text='NOT', font=('Purisa', int(ySize/3)))
         canvas.create_text(x+xSize*(1/2), y+ySize*(2/3), text='GOOD', font=('Purisa', int(ySize/3)), angle=180)
 
+class StyleBoostPewdiepie(Style):
+    def draw(self, boost, game):
+        canvas = game.canvas
+        gameMap = game.gameSMap
+
+        scaleX = gameMap.scale[0]
+        scaleY = gameMap.scale[1]
+
+        x = boost.pos[0]*scaleX
+        y = boost.pos[1]*scaleY
+        xSize = scaleX
+        ySize = scaleY
+
+        color = '#FF0000'
+
+        canvas.create_rectangle(x, y, x+xSize, y+ySize, fill=color, outline=color)
+
 styles = {
     'snakePlayer': {
         'default': StyleSnakeDefaultPlayer,
         'rainbow': StyleSnakeRainbowPlayer,
+        'pewdiepie': StyleSnakePewdiepiePlayer,
     },
     'snakeRemote': {
         'default': StyleSnakeDefaultRemote,
         'rainbow': StyleSnakeRainbowRemote,
+        'pewdiepie': StyleSnakePewdiepieRemote,
     },
     'maze': {
         'default': StyleMazeDefault,
@@ -238,6 +355,7 @@ styles = {
     'boost': {
         'food': StyleBoostFood,
         'lgbt': StyleBoostLgbt,
+        'pewdiepie': StyleBoostPewdiepie,
     },
 }
 
@@ -253,9 +371,11 @@ class SnakeBlock():
         return SnakeBlock([blockDict['x'], blockDict['y']], blockDict['isHead'])
 
 class Snake():
-    def __init__(self, blocks, style):
+    def __init__(self, blocks, style, score, activeBoostName):
         self.blocks = blocks
         self.style = style
+        self.score = score
+        self.activeBoostName = activeBoostName
 
     def draw(self, game):
         self.style.draw(self, game)
@@ -266,7 +386,7 @@ class Snake():
         styleDict = snakeDict['style']
         style = Style.fromDict(styleDict, 'snakePlayer' if isPlayer else 'snakeRemote')
 
-        return Snake(blocks, style)
+        return Snake(blocks, style, snakeDict['score'], snakeDict['activeBoostName'])
 
 class SnakeEliminator():
     def __init__(self, type, playerName=None):
@@ -411,12 +531,12 @@ class Game():
         self.stateManager.endState()
         self.root.destroy()
 
-    def createTexts(self, x, y, texts, fontSize):
+    def createTexts(self, x, y, texts, fontSize, font='Purisa'):
         fontSize = self.fontSize(fontSize)
 
         textPos = -fontSize*(len(texts)-1)
         for i in range(len(texts)):
-            self.canvas.create_text(x, y+textPos, text=texts[i], font=('Purisa', fontSize))
+            self.canvas.create_text(x, y+textPos, text=texts[i], font=(font, fontSize))
             textPos += 2*fontSize
 
     # -------------------- state: game -------------------- #
@@ -442,6 +562,7 @@ class Game():
         self.gameSPlayerId = addPlayerMessage['player']['id']
 
         self.gameSEliminator = None
+        self.gameSScore = None
 
         self.gameSErrorMessage = ''
 
@@ -577,6 +698,8 @@ class Game():
             self.gamePlayingSEliminationResetAfter = None
             self.gamePlayingSEliminationId = None
 
+            self.gameSScore = None
+
     def gameSPlayingStateOnLoop(self):
         loopInfoDict = self.gameSGameClient.communicate('loopInfo', {})
 
@@ -585,8 +708,6 @@ class Game():
 
             self.gameSStateManager.setState('game.dead')
         else:
-            self.canvas.delete('all')
-
             loopDict = self.gameSGameClient.communicate('loop', {})
 
             playersDict = loopDict['players']
@@ -595,20 +716,18 @@ class Game():
             for playerDict in playersDict:
                 players.append(Player.fromDict(playerDict))
 
-            for player in players:
-                if player.playing:
-                    player.draw(self)
-
             boostsDict = loopDict['boosts']
             boosts = []
 
             for boostDict in boostsDict:
                 boosts.append(Boost.fromDict(boostDict))
 
-            for boost in boosts:
-                boost.draw(self)
+            activeBoostName = ''
+            for player in players:
+                if self.gameSPlayerId == player.id:
+                    self.gameSScore = player.snake.score
 
-            self.gameSMap.maze.draw(self)
+                    activeBoostName = player.snake.activeBoostName
 
             if loopInfoDict['elimination']:
                 if self.gamePlayingSEliminationId != None:
@@ -619,10 +738,32 @@ class Game():
                 self.gamePlayingSEliminationId = loopInfoDict['eliminationInfo']['playerName']
                 self.gamePlayingSEliminationResetAfter = self.after(1000, self.gamePlayingSEliminationReset)
 
-            if self.gamePlayingSEliminationId != None:
-                screenSizeX = self.screenSize[0]
-                screenSizeY = self.screenSize[1]
+            self.canvas.delete('all')
 
+            screenSizeX = self.screenSize[0]
+            screenSizeY = self.screenSize[1]
+
+            if activeBoostName == 'pewdiepie':
+                youtubeApiKey = 'AIzaSyCOcvg_f5GqfvO6sbjWLNO_TFNWJdURiJk'
+
+                pewdiepieChannel = YoutubeChannel('pewdiepie', youtubeApiKey)
+                tseriesChannel = YoutubeChannel('tseries', youtubeApiKey)
+
+                subscriberGap = abs(pewdiepieChannel.getSubscribersCount()-tseriesChannel.getSubscribersCount())
+
+                self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), ['SUBCRIBE TO', 'PEWDIEPIE'], 25, font='comic sans ms')
+                self.createTexts(screenSizeX*(1/2), screenSizeY*(5/7), ['Current subscriber gap is 105235'], 8)
+
+            for player in players:
+                if player.playing:
+                    player.draw(self)
+
+            for boost in boosts:
+                boost.draw(self)
+
+            self.gameSMap.maze.draw(self)
+
+            if self.gamePlayingSEliminationId != None:
                 self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), ['elimination {id}'.format(id=self.gamePlayingSEliminationId)], 8)
 
     def gameSPlayingStateOnEnd(self):
@@ -681,7 +822,9 @@ class Game():
         screenSizeX = self.screenSize[0]
         screenSizeY = self.screenSize[1]
 
-        self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), [self.gameSEliminator.getMessage(), 'press <space> to start playing', 'press <q> to return back to menu'], 8)
+        scoreMessage = 'your score is {score}'.format(score=self.gameSScore)
+
+        self.createTexts(screenSizeX*(1/2), screenSizeY*(1/2), [self.gameSEliminator.getMessage(), scoreMessage, 'press <space> to start playing', 'press <q> to return back to menu'], 8)
 
     def gameSDeadStateOnEnd(self):
         self.gameSEliminator = None
